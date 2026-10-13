@@ -1,0 +1,2978 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>PEP 8 Checker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&family=Kalam:wght@700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --paper:#F1F4F8; --surface:#FFFFFF; --ink:#1C2740; --muted:#5B6680;
+  --line:#D6DCE6; --soft:#E8ECF2; --marker:#FFE57F; --marker-ink:#4A3B00;
+  --pen:#C23B2A; --good:#2F7A57; --mid:#8A6A00; --focus:#2F5BD3;
+  --header-bg:#EEF1F7;
+  --sans:"Public Sans",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --hand:"Kalam","Comic Sans MS","Segoe Print",cursive;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --paper:#121826; --surface:#1A2233; --ink:#E6EAF2; --muted:#9AA5BA;
+    --line:#2D3852; --soft:#222C40; --marker:rgba(255,214,90,.22); --marker-ink:#FFE7A0;
+    --pen:#F07062; --good:#5CC08D; --mid:#E2BE55; --focus:#8EAEFF; --header-bg:#1E2738;
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#121826; --surface:#1A2233; --ink:#E6EAF2; --muted:#9AA5BA;
+  --line:#2D3852; --soft:#222C40; --marker:rgba(255,214,90,.22); --marker-ink:#FFE7A0;
+  --pen:#F07062; --good:#5CC08D; --mid:#E2BE55; --focus:#8EAEFF; --header-bg:#1E2738;
+}
+*,*::before,*::after{box-sizing:inherit}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--sans);font-size:16px;line-height:1.5}
+button,input,select,textarea{font:inherit;color:inherit;box-sizing:border-box}
+:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
+.wrap{max-width:1200px;margin:0 auto;padding:28px 20px 64px}
+
+header.top{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:12px 24px;margin-bottom:24px}
+h1{font-size:2rem;line-height:1.1;margin:0;font-weight:700;letter-spacing:-.01em}
+.sub{margin:6px 0 0;color:var(--muted);max-width:60ch}
+.status{display:inline-flex;align-items:center;gap:8px;padding:6px 12px;border-radius:999px;background:var(--surface);border:1px solid var(--line);font-size:.875rem;color:var(--muted)}
+.status .dot{width:9px;height:9px;border-radius:50%;background:var(--mid)}
+.status.ready .dot{background:var(--good)}
+.status.error .dot{background:var(--pen)}
+.status.busy .dot{animation:pulse 1s ease-in-out infinite}
+@keyframes pulse{50%{opacity:.3}}
+@media (prefers-reduced-motion:reduce){.status.busy .dot{animation:none}}
+
+.intake{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr);gap:20px;margin-bottom:28px}
+@media (max-width:820px){.intake{grid-template-columns:1fr}}
+.drop{border:2px dashed var(--line);border-radius:14px;background:var(--surface);padding:28px 24px;display:flex;flex-direction:column;gap:14px;justify-content:center;transition:border-color .15s,background .15s}
+.drop.over{border-color:var(--focus);background:var(--soft)}
+.drop h2{margin:0;font-size:1.2rem}
+.drop p{margin:0;color:var(--muted);max-width:56ch}
+.row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.btn{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:8px 14px;cursor:pointer;font-weight:600;font-size:.9rem}
+.btn:hover{background:var(--soft)}
+.btn.primary{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+.btn.primary:hover{opacity:.9;background:var(--ink)}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.btn.quiet{border-color:transparent;background:transparent;color:var(--muted)}
+.btn.quiet:hover{color:var(--ink);background:var(--soft)}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:14px}
+details.panel>summary{cursor:pointer;padding:14px 18px;font-weight:600;list-style:none;display:flex;justify-content:space-between;align-items:center}
+details.panel>summary::-webkit-details-marker{display:none}
+details.panel>summary::after{content:"+";font-size:1.2rem;color:var(--muted)}
+details.panel[open]>summary::after{content:"\2212"}
+.panel-body{padding:4px 18px 18px;display:grid;gap:14px}
+.side{display:grid;gap:14px;align-content:start}
+.field{display:grid;gap:4px}
+.field label,.lbl{font-size:.875rem;font-weight:600}
+.hint{font-size:.8rem;color:var(--muted)}
+input[type=number],input[type=text],textarea{background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:7px 10px;width:100%}
+input[type=number]{width:5.5em}
+textarea{font-family:var(--mono);font-size:.85rem;min-height:160px;resize:vertical}
+.check{display:flex;gap:8px;align-items:flex-start;font-size:.9rem}
+[hidden]{display:none!important}
+.check input{margin-top:4px}
+.grid2{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+.mini{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:.875rem}
+.bands{display:grid;grid-template-columns:auto 1fr;gap:6px 12px;align-items:center;font-size:.875rem}
+.bands .b{font-family:var(--hand);font-size:1.25rem;line-height:1}
+
+.summary-head{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:baseline;gap:12px;margin:0 0 12px}
+.summary-head h2{margin:0;font-size:1.35rem}
+.stats{color:var(--muted);font-size:.9rem;margin:2px 0 0}
+.progress{font-size:.9rem;color:var(--muted);margin:0 0 10px;min-height:1.4em}
+
+.tablewrap{overflow-x:auto;background:var(--surface);border:1px solid var(--line);border-radius:14px}
+table{border-collapse:collapse;width:100%;font-size:.9rem}
+th,td{padding:8px 7px;text-align:left;border-bottom:1px solid var(--soft);vertical-align:middle;white-space:nowrap}
+th{font-size:.8rem;color:var(--muted);font-weight:600;background:var(--header-bg)}
+th button{all:unset;cursor:pointer;display:inline-flex;gap:4px;align-items:center}
+th button:focus-visible{outline:3px solid var(--focus)}
+th .arrow{font-size:.7rem;opacity:.7}
+td.num,th.num{text-align:right}
+td.ctr,th.ctr{text-align:center}
+th.ctr button{justify-content:center}
+td.flags{white-space:normal;min-width:6em;max-width:10em}
+td.flags .flag{margin:1px 3px 1px 0}
+tbody tr{cursor:pointer}
+tbody tr:hover{background:var(--soft)}
+tbody tr.sel{background:var(--marker);color:var(--marker-ink)}
+tbody tr:last-child td{border-bottom:0}
+.who{font-weight:600;display:block;white-space:normal;max-width:13em;line-height:1.3}
+tbody td:first-child{white-space:normal}
+.file{color:var(--muted);font-size:.8rem;max-width:18ch;overflow:hidden;text-overflow:ellipsis;display:block}
+.flag{display:inline-block;font-size:.75rem;padding:2px 8px;border-radius:999px;border:1px solid var(--line);margin-right:4px;color:var(--muted)}
+.flag.warn{border-color:var(--pen);color:var(--pen)}
+.hdr-ok{color:var(--good);font-weight:600}
+.hdr-miss{color:var(--pen);font-weight:600}
+.empty{padding:40px 20px;text-align:center;color:var(--muted)}
+
+/* the red-pen score: the one bold element */
+.mark{display:inline-grid;place-items:center;width:1.9em;height:1.9em;font-family:var(--hand);font-size:1.05rem;line-height:1;border:2px solid currentColor;border-radius:48% 52% 44% 56% / 55% 45% 55% 45%;transform:rotate(-6deg)}
+.mark.s5,.mark.s4{color:var(--good)}
+.mark.s3{color:var(--mid)}
+.mark.s2,.mark.s1{color:var(--pen)}
+.mark.big{font-size:3rem;border-width:3px;width:1.9em;height:1.9em}
+.band-plain{font-family:var(--hand);font-size:1.15rem}
+
+#detail{margin-top:32px;scroll-margin-top:16px}
+.detail-head{display:flex;flex-wrap:wrap;gap:20px 28px;align-items:center;padding:22px 24px;border-bottom:1px solid var(--line)}
+.detail-head h2{margin:0;font-size:1.4rem}
+.breakdown{margin:6px 0 0;padding:0;list-style:none;display:grid;gap:2px;font-size:.92rem}
+.breakdown .minus{color:var(--pen);font-weight:600}
+.detail-actions{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap}
+.detail-body{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.25fr);gap:0}
+@media (max-width:900px){.detail-body{grid-template-columns:1fr}}
+.issues{padding:20px 24px;border-right:1px solid var(--line)}
+@media (max-width:900px){.issues{border-right:0;border-bottom:1px solid var(--line)}}
+.issues h3{font-size:.95rem;margin:18px 0 8px;color:var(--muted);font-weight:600}
+.issues h3:first-child{margin-top:0}
+.issue{padding:10px 0;border-top:1px solid var(--soft)}
+.issue:first-of-type{border-top:0}
+.issue-top{display:flex;justify-content:space-between;gap:10px;align-items:baseline}
+.issue-msg{font-weight:600}
+.count{font-family:var(--hand);font-size:1.2rem;color:var(--pen);white-space:nowrap}
+.code-id{font-family:var(--mono);font-size:.75rem;color:var(--muted)}
+.chips{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
+.chip{border:1px solid var(--line);background:var(--paper);border-radius:6px;padding:1px 7px;font-family:var(--mono);font-size:.75rem;cursor:pointer}
+.chip:hover{border-color:var(--ink)}
+.note{margin:0 0 14px;padding:10px 12px;border-radius:8px;background:var(--soft);font-size:.9rem}
+.note.bad{border-left:4px solid var(--pen)}
+.note.ok{border-left:4px solid var(--good)}
+.clean{color:var(--good);font-weight:600}
+
+.codeview{overflow:auto;max-height:70vh;font-family:var(--mono);font-size:.8rem;line-height:1.6;padding:12px 0}
+.ln{display:grid;grid-template-columns:3.5em minmax(0,1fr) auto;gap:12px;padding:0 16px 0 0;min-width:max-content}
+.ln .n{text-align:right;color:var(--muted);user-select:none}
+.ln .src{white-space:pre}
+.ln .codes{font-size:.7rem;color:var(--pen);padding-left:8px}
+.ln.hit{background:var(--marker);color:var(--marker-ink)}
+.ln.hit .n{color:inherit}
+.ln.hdr{background:var(--header-bg);color:var(--muted)}
+.ln.hdr .codes{color:var(--muted)}
+.ln.flash{outline:2px solid var(--focus);outline-offset:-2px}
+.hdr-label{font-family:var(--sans);font-size:.75rem;color:var(--muted);padding:0 16px 6px 4.6em}
+
+.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--paper);padding:10px 16px;border-radius:8px;font-size:.9rem;opacity:0;pointer-events:none;transition:opacity .2s}
+.toast.show{opacity:1}
+footer{margin-top:40px;color:var(--muted);font-size:.8rem}
+
+.runpanel{margin-bottom:28px}
+.modes{border:0;padding:0;margin:0;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+@media (max-width:820px){.modes{grid-template-columns:1fr}}
+.mode{display:flex;gap:10px;align-items:flex-start;padding:12px 14px;border:1px solid var(--line);border-radius:10px;cursor:pointer;background:var(--paper)}
+.mode:has(input:checked){border-color:var(--ink);background:var(--surface);box-shadow:inset 0 0 0 1px var(--ink)}
+.mode input{margin-top:5px}
+.mode .hint{display:block;margin-top:2px}
+.run-opts{display:grid;gap:16px}
+.cf{display:grid;gap:3px;font-size:.8rem;color:var(--muted);min-width:0}
+.cf input[type=text],.cf textarea,.cf select{width:100%;max-width:100%;min-width:0}
+.cf>span{font-weight:600}
+.cf input,.cf select,.cf textarea{color:var(--ink);font-size:.9rem}
+.cf.grow{flex:1 1 220px}
+.cf.wide{width:100%}
+.cf textarea{min-height:0}
+select{background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:7px 10px}
+.check.sm{font-size:.85rem;align-self:end;padding-bottom:6px}
+.presets select{min-width:14em}
+.test-list{display:grid;gap:14px;margin-bottom:12px}
+.test-card{border:1px solid var(--line);border-radius:10px;padding:14px;display:grid;gap:12px;background:var(--paper)}
+.test-card .row{align-items:flex-end}
+.checks-list{display:grid;gap:8px}
+.check-row{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:flex-end;padding:10px;border-radius:8px;background:var(--surface);border:1px solid var(--soft)}
+.check-row .cf.wide{flex-basis:100%}
+.check-row>.cf:first-child{flex:0 0 15.5em}
+.check-row .cf:not(.grow):not(.wide):not(:first-child){flex:0 0 7em}
+.alts{display:grid;gap:8px}
+.alt-row{display:flex;gap:10px;align-items:flex-end}
+.alts .row{gap:6px 12px}
+.roster{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:6px 12px;padding-top:10px;border-top:1px solid var(--soft)}
+.muted{color:var(--muted)}
+.mid{color:var(--mid);font-weight:600}
+.runs{padding:20px 24px;border-top:1px solid var(--line)}
+.runs h3{margin:0 0 10px;font-size:1.05rem}
+.run-status{margin:6px 0 8px}
+pre.out{font-family:var(--mono);font-size:.8rem;line-height:1.55;background:var(--paper);border:1px solid var(--soft);border-radius:8px;padding:12px 14px;overflow:auto;max-height:360px;margin:8px 0 0;white-space:pre}
+details.test{border-top:1px solid var(--soft);padding:10px 0}
+details.test:first-of-type{border-top:0}
+details.test>summary{cursor:pointer;font-weight:600}
+.check-results{list-style:none;margin:6px 0 0;padding:0;display:grid;gap:4px;font-size:.9rem}
+.check-results .muted{margin-left:1.4em;font-size:.85rem}
+
+.summary-head input.title-input{width:16em}
+.summary-head .row{flex-wrap:wrap;justify-content:flex-end}
+.override{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:flex-end;padding:14px 24px;border-bottom:1px solid var(--line);background:var(--paper)}
+.override .cf:first-child{flex:0 0 11em}
+.override textarea{min-height:0;font-family:var(--sans);font-size:.9rem}
+
+/* printable student report (always light, rendered to PDF) */
+.report{width:760px;background:#fff;color:#1C2740;font-family:var(--sans);font-size:13px;line-height:1.5;padding:4px 2px}
+.report h1{font-size:26px;margin:2px 0 4px;line-height:1.15}
+.report h2{font-size:16px;margin:0 0 8px}
+.report h3{font-size:14px;margin:0 0 6px}
+.report p{margin:0 0 6px}
+.r-head{display:flex;gap:22px;align-items:center;padding-bottom:14px;border-bottom:2px solid #1C2740}
+.r-title{color:#5B6680;font-weight:600;margin:0}
+.r-meta{color:#5B6680;font-size:12px;margin:0}
+.r-mark{flex:0 0 auto;width:92px;height:92px;display:grid;place-items:center;align-content:center;font-family:var(--hand);font-size:46px;line-height:1;border:3px solid currentColor;border-radius:48% 52% 44% 56% / 55% 45% 55% 45%;transform:rotate(-6deg)}
+.r-mark span{font-family:var(--sans);font-size:10px;font-weight:600;margin-top:2px}
+.r-s5,.r-s4{color:#2F7A57}.r-s3{color:#8A6A00}.r-s2,.r-s1{color:#C23B2A}
+.r-break{list-style:none;padding:0;margin:12px 0;display:grid;gap:2px}
+.r-minus{color:#C23B2A;font-weight:600}
+.r-note{border-left:4px solid #2F5BD3;background:#EEF2FB;padding:10px 14px;border-radius:6px;margin:0 0 14px}
+.r-note p{margin:4px 0 0;white-space:pre-wrap}
+.r-sec{margin-top:18px}
+.r-table{width:100%;border-collapse:collapse}
+.r-table th{text-align:left;font-size:11px;color:#5B6680;border-bottom:1px solid #D6DCE6;padding:5px 6px}
+.r-table td{border-bottom:1px solid #E8ECF2;padding:7px 6px;vertical-align:top}
+.r-num{text-align:right;white-space:nowrap}
+.r-count{font-family:var(--hand);font-size:17px;color:#C23B2A}
+.r-code{font-family:var(--mono);font-size:10.5px;color:#5B6680}
+.r-lines{font-family:var(--mono);font-size:11px;color:#5B6680}
+.r-hint{color:#5B6680;font-size:11.5px;margin-top:6px}
+.r-good,.r-ok{color:#2F7A57;font-weight:600}
+.r-bad{color:#C23B2A;font-weight:600}
+.r-test{padding:10px 0;border-top:1px solid #E8ECF2}
+.r-test:first-of-type{border-top:0}
+.r-checks{list-style:none;padding:0;margin:4px 0 8px;display:grid;gap:3px}
+.r-why{color:#5B6680;margin-left:18px;font-size:12px}
+.r-out{font-family:var(--mono);font-size:10.5px;line-height:1.5;background:#F1F4F8;border-radius:6px;padding:10px 12px;margin:0;white-space:pre-wrap;word-break:break-word}
+.r-codebox{font-family:var(--mono);font-size:10.5px;line-height:1.55;border:1px solid #E8ECF2;border-radius:6px;padding:6px 0}
+.r-line{display:grid;grid-template-columns:34px minmax(0,1fr) auto;gap:10px;padding:0 8px 0 0}
+.r-n{text-align:right;color:#8A93A8}
+.r-src{white-space:pre-wrap;word-break:break-word}
+.r-tags{color:#C23B2A;font-size:9.5px}
+.r-hit{background:#FFE57F}
+.r-hdr{background:#EEF1F7;color:#5B6680}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div>
+      <h1>PEP 8 Checker</h1>
+      <p class="sub">Drop in student Python files and get a style grade for each one. Everything runs in your browser; no code is uploaded.</p>
+    </div>
+    <div class="status busy" id="status" role="status" aria-live="polite"><span class="dot"></span><span id="statusText">Loading Python…</span></div>
+  </header>
+
+  <section class="intake">
+    <div class="drop" id="drop">
+      <h2>Add student programs</h2>
+      <p>Drag in a Canvas submissions zip, a folder, or a group of <code>.py</code> files. Canvas file names are read automatically to label each student.</p>
+      <div class="row">
+        <button class="btn primary" id="pickFiles" type="button">Choose files or zip</button>
+        <button class="btn" id="pickFolder" type="button">Choose folder</button>
+        <button class="btn quiet" id="clearAll" type="button" hidden>Clear all</button>
+      </div>
+      <div class="roster">
+        <span id="rosterStatus" class="hint"></span>
+        <span class="row" style="gap:6px">
+          <button class="btn quiet" id="addRoster" type="button">Add class roster</button>
+          <button class="btn quiet" id="clearRoster" type="button" hidden>Clear roster</button>
+        </span>
+        <input type="file" id="rosterInput" class="sr" accept=".csv" multiple tabindex="-1" aria-hidden="true">
+      </div>
+      <input type="file" id="fileInput" class="sr" multiple accept=".py,.zip" tabindex="-1" aria-hidden="true">
+      <input type="file" id="folderInput" class="sr" webkitdirectory multiple tabindex="-1" aria-hidden="true">
+      <details>
+        <summary class="lbl" style="cursor:pointer">Or paste a single program</summary>
+        <div style="display:grid;gap:8px;margin-top:10px">
+          <input type="text" id="pasteName" placeholder="Student name (optional)" aria-label="Student name">
+          <textarea id="pasteCode" placeholder="Paste Python code here" aria-label="Python code"></textarea>
+          <div><button class="btn" id="pasteBtn" type="button">Check pasted code</button></div>
+        </div>
+      </details>
+    </div>
+
+    <div class="side">
+      <details class="panel" id="settingsPanel">
+        <summary>Grading settings</summary>
+        <div class="panel-body">
+          <div>
+            <span class="lbl">Rubric bands</span>
+            <p class="hint" style="margin:2px 0 8px">Highest band a file earns for its weighted count of unique mistake types.</p>
+            <div class="bands">
+              <span class="b">5</span><span>0 to <input type="number" id="t5" min="0" step="0.5" aria-label="Band 5 maximum"> points</span>
+              <span class="b">4</span><span>up to <input type="number" id="t4" min="0" step="0.5" aria-label="Band 4 maximum"> points</span>
+              <span class="b">3</span><span>up to <input type="number" id="t3" min="0" step="0.5" aria-label="Band 3 maximum"> points</span>
+              <span class="b">2</span><span>up to <input type="number" id="t2" min="0" step="0.5" aria-label="Band 2 maximum"> points</span>
+              <span class="b">1</span><span>anything above</span>
+            </div>
+          </div>
+          <div>
+            <span class="lbl">Category weights</span>
+            <p class="hint" style="margin:2px 0 8px">Points each unique mistake type adds. Repeats of the same type never add more.</p>
+            <div class="grid2" id="weights"></div>
+          </div>
+          <label class="check"><input type="checkbox" id="headerDeduct"> <span>Take 1 point off the final score when the header is missing</span></label>
+          <label class="check"><input type="checkbox" id="naming"> <span>Check naming conventions (snake_case functions and variables, CapWords classes)</span></label>
+          <label class="check"><input type="checkbox" id="tcCheck"> <span>Look for test cases written in the code as comments: <code>TEST CASE 1:</code> through <code>TEST CASE 4:</code></span></label>
+          <label class="check" id="tcDeductRow"><input type="checkbox" id="tcDeduct"> <span>Require at least <input type="number" id="tcMin" min="1" max="4" step="1" aria-label="Test cases required" style="width:3.5em"> test cases (a test case document or screenshot also counts). Missing: −1 point, or Submission 4 with the 3-column rubric</span></label>
+          <div class="row">
+            <div class="field"><label for="minLines">Short sample under</label><span><input type="number" id="minLines" min="0" step="1"> lines of code</span></div>
+            <div class="field"><label for="maxLen">Max line length</label><span><input type="number" id="maxLen" min="40" max="200" step="1"> characters</span></div>
+          </div>
+          <div class="row"><button class="btn quiet" id="resetSettings" type="button">Restore defaults</button></div>
+        </div>
+      </details>
+      <div class="panel" style="padding:14px 18px;font-size:.875rem;color:var(--muted)">
+        <strong style="color:var(--ink)">How the header works.</strong> Comments or a docstring at the very top of the file, before any code, count as the header. Its formatting is never graded. Files with fewer than two header comment lines (and no docstring) are flagged as missing a header.
+      </div>
+    </div>
+  </section>
+
+  <details class="panel runpanel" id="runPanel" open>
+    <summary>Running and tests</summary>
+    <div class="panel-body">
+      <fieldset class="modes">
+        <legend class="sr">What to check</legend>
+        <label class="mode"><input type="radio" name="mode" value="pep8"><span><strong>PEP 8 only</strong><span class="hint">Style grade only. Programs aren't run.</span></span></label>
+        <label class="mode"><input type="radio" name="mode" value="runs"><span><strong>PEP 8 + runs</strong><span class="hint">Runs each program once to see that it finishes. Good for programs with random output.</span></span></label>
+        <label class="mode"><input type="radio" name="mode" value="tests"><span><strong>PEP 8 + runs + tests</strong><span class="hint">Runs each test's inputs and checks the output.</span></span></label>
+      </fieldset>
+
+      <div id="runOpts" class="run-opts">
+        <div class="row">
+          <label class="cf"><span>Time limit (seconds)</span><input type="number" id="timeout" min="1" step="1"></label>
+          <label class="check"><input type="checkbox" id="rubric"> <span><strong>Use the 3-column rubric</strong> (like the Java grader): Program &amp; Output, Style and Submission are each scored out of 5, so test results count</span></label>
+          <label class="check" id="runDeductRow"><input type="checkbox" id="runDeduct"> <span>Take 1 point off when a program crashes, times out, or has a syntax error</span></label>
+        </div>
+        <div class="row presets">
+          <select id="presetSelect" aria-label="Saved assignments"></select>
+          <button class="btn" type="button" id="presetLoad">Load</button>
+          <button class="btn" type="button" id="presetSave">Save as…</button>
+          <button class="btn quiet" type="button" id="presetDelete">Delete</button>
+          <button class="btn quiet" type="button" id="presetExport">Export file</button>
+          <button class="btn quiet" type="button" id="presetImport">Import file</button>
+          <input type="file" id="presetFile" class="sr" accept=".json" tabindex="-1" aria-hidden="true">
+        </div>
+
+        <div id="runInputsBox">
+          <label class="cf wide"><span>Inputs to type in, one per line</span><textarea id="runInputs" rows="4" placeholder="Will I ace my CS test?&#10;no"></textarea></label>
+          <p class="hint">Fed to <code>input()</code> in order. Leave empty if the program doesn't ask for input.</p>
+          <div id="runAlts"></div>
+        </div>
+
+        <div id="testsBox">
+          <div id="testList" class="test-list"></div>
+          <div><button class="btn" type="button" id="addTest">Add test</button></div>
+        </div>
+      </div>
+    </div>
+  </details>
+
+  <section id="results">
+    <div class="summary-head">
+      <div>
+        <h2>Class summary</h2>
+        <p class="stats" id="stats">No files checked yet.</p>
+      </div>
+      <div class="row">
+        <select id="periodFilter" aria-label="Show period" hidden></select>
+        <input type="text" id="reportTitle" class="title-input" placeholder="Assignment name for reports" aria-label="Assignment name for student reports">
+        <button class="btn" id="pdfSummary" type="button" disabled>Class summary PDF</button>
+        <button class="btn" id="pdfAll" type="button" disabled>Download student PDFs</button>
+        <button class="btn" id="exportCsv" type="button" disabled>Export CSV</button>
+      </div>
+    </div>
+    <p class="progress" id="progress" aria-live="polite"></p>
+    <div class="tablewrap">
+      <table>
+        <thead>
+          <tr id="theadRow"></tr>
+        </thead>
+        <tbody id="tbody">
+          <tr><td colspan="9" class="empty">Add files above to see each student's style grade here.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="detail" class="panel" hidden aria-live="polite"></section>
+
+  <footer>Style checks by pycodestyle, the official PEP 8 checker, running in the browser with Pyodide. Naming checks follow the pep8-naming conventions. Programs run in a separate browser worker; <code>time.sleep()</code> and <code>os.system()</code> are skipped so pauses and screen clears don't cause timeouts.</footer>
+</div>
+<div class="toast" id="toast" role="status"></div>
+<script type="text/x-python" id="pysrc">
+import ast
+import io
+import json
+import re
+import tokenize
+
+import pycodestyle
+
+
+class _Collector(pycodestyle.BaseReport):
+    def __init__(self, options):
+        super().__init__(options)
+        self.items = []
+
+    def error(self, line_number, offset, text, check):
+        code = text[:4]
+        if self._ignore_code(code):
+            return None
+        self.items.append([int(line_number), int(offset) + 1, code, text[5:]])
+        return code
+
+
+_TRIPLE = re.compile(r'^[rRuUbBfF]{0,2}("""|\'\'\')')
+_CODING = re.compile(r'^#.*coding[:=]')
+
+
+def find_header(lines):
+    """Return (last header line number, has_header)."""
+    n = len(lines)
+    i = 0
+    end = 0
+    comment_lines = 0
+    doc = False
+    while i < n:
+        s = lines[i].strip()
+        if not s:
+            i += 1
+            continue
+        if s.startswith('#'):
+            if (i == 0 and s.startswith('#!')) or (i < 2 and _CODING.match(s)):
+                end = i + 1
+            else:
+                comment_lines += 1
+                end = i + 1
+            i += 1
+            continue
+        m = _TRIPLE.match(s)
+        if m and not doc:
+            q = m.group(1)
+            if q in s[m.end():]:
+                end = i + 1
+                i += 1
+            else:
+                j = i + 1
+                while j < n and q not in lines[j]:
+                    j += 1
+                end = min(j, n - 1) + 1
+                i = j + 1
+            doc = True
+            continue
+        break
+    has = doc or comment_lines >= 2
+    return end, has
+
+
+_UPPER = re.compile(r'[A-Z]')
+_CLASS_OK = re.compile(r'^_*[A-Z][A-Za-z0-9]*$')
+_CONST_OK = re.compile(r'^_*[A-Z][A-Z0-9_]*$')
+
+
+class _Namer(ast.NodeVisitor):
+    def __init__(self):
+        self.items = []
+        self.seen = set()
+        self.depth = 0
+
+    def _add(self, node, code, msg, name):
+        key = (code, name)
+        if key in self.seen:
+            return
+        self.seen.add(key)
+        self.items.append([node.lineno, node.col_offset + 1, code, msg])
+
+    def visit_ClassDef(self, node):
+        if not _CLASS_OK.match(node.name):
+            self._add(node, 'N801',
+                      "class name '%s' should use CapWords" % node.name,
+                      node.name)
+        self.generic_visit(node)
+
+    def _func(self, node):
+        name = node.name
+        dunder = name.startswith('__') and name.endswith('__')
+        if _UPPER.search(name) and not dunder:
+            self._add(node, 'N802',
+                      "function name '%s' should be lowercase" % name, name)
+        a = node.args
+        params = list(a.posonlyargs) + list(a.args) + list(a.kwonlyargs)
+        params += [p for p in (a.vararg, a.kwarg) if p is not None]
+        for p in params:
+            if _UPPER.search(p.arg):
+                self._add(p, 'N803',
+                          "argument name '%s' should be lowercase" % p.arg,
+                          p.arg)
+        self.depth += 1
+        self.generic_visit(node)
+        self.depth -= 1
+
+    visit_FunctionDef = _func
+    visit_AsyncFunctionDef = _func
+
+    def _targets(self, target):
+        for n in ast.walk(target):
+            if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Store):
+                self._var(n)
+
+    def _var(self, n):
+        name = n.id
+        if self.depth > 0:
+            if _UPPER.search(name):
+                self._add(n, 'N806',
+                          "variable '%s' in function should be lowercase"
+                          % name, name)
+        elif _UPPER.search(name) and not _CONST_OK.match(name):
+            self._add(n, 'N816',
+                      "variable '%s' at module level uses mixedCase" % name,
+                      name)
+
+    def visit_Assign(self, node):
+        for t in node.targets:
+            self._targets(t)
+        self.generic_visit(node)
+
+    def visit_AnnAssign(self, node):
+        self._targets(node.target)
+        self.generic_visit(node)
+
+    def visit_AugAssign(self, node):
+        self._targets(node.target)
+        self.generic_visit(node)
+
+    def visit_For(self, node):
+        self._targets(node.target)
+        self.generic_visit(node)
+
+    visit_AsyncFor = visit_For
+
+    def visit_With(self, node):
+        for item in node.items:
+            if item.optional_vars is not None:
+                self._targets(item.optional_vars)
+        self.generic_visit(node)
+
+    visit_AsyncWith = visit_With
+
+
+# "TEST CASE 1:" or "TEST CASE: 1" (any capitalization) in a comment or a
+# stand-alone triple-quoted string. Printed text doesn't count.
+_TEST_CASE = re.compile(
+    r'TEST\s*CASE\s*(?:#\s*)?(?::\s*(\d+)|(\d+)\s*:)', re.IGNORECASE)
+_STMT_START = {tokenize.NEWLINE, tokenize.NL, tokenize.INDENT,
+               tokenize.DEDENT, tokenize.ENCODING}
+
+
+def find_test_cases(source):
+    """Return the sorted, distinct test case numbers written in comments."""
+    texts = []
+    try:
+        prev = tokenize.NEWLINE
+        for tok in tokenize.generate_tokens(io.StringIO(source).readline):
+            if tok.type == tokenize.COMMENT:
+                texts.append(tok.string)
+            elif tok.type == tokenize.STRING and prev in _STMT_START:
+                texts.append(tok.string)
+            if tok.type not in (tokenize.COMMENT, tokenize.NL):
+                prev = tok.type
+            elif tok.type == tokenize.NL:
+                prev = tokenize.NL
+    except (tokenize.TokenError, SyntaxError, IndentationError):
+        # unreadable file: fall back to whole-line # comments
+        texts = [ln for ln in source.splitlines() if ln.lstrip().startswith('#')]
+    nums = set()
+    for t in texts:
+        for m in _TEST_CASE.finditer(t):
+            nums.add(int(m.group(1) or m.group(2)))
+    return sorted(nums)
+
+
+_GUIDES = {}
+
+
+def _guide(max_len):
+    if max_len not in _GUIDES:
+        _GUIDES[max_len] = pycodestyle.StyleGuide(
+            quiet=True, max_line_length=max_len)
+    return _GUIDES[max_len]
+
+
+def check(source, max_len=79, naming=True):
+    source = source.replace('\r\n', '\n').replace('\r', '\n')
+    if source.startswith('\ufeff'):
+        source = source[1:]
+    lines = source.splitlines(True)
+    hdr_end, has_hdr = find_header(lines)
+    options = _guide(int(max_len)).options
+    rep = _Collector(options)
+    try:
+        pycodestyle.Checker(lines=lines, options=options,
+                            report=rep).check_all()
+    except Exception as exc:  # keep going; report as unreadable
+        rep.items.append([1, 1, 'E902', 'could not check file: %s' % exc])
+    items = rep.items
+    syntax = None
+    try:
+        tree = ast.parse(source)
+        if naming:
+            namer = _Namer()
+            namer.visit(tree)
+            items += namer.items
+    except SyntaxError as exc:
+        syntax = [exc.lineno or 1, str(exc.msg)]
+        if not any(it[2].startswith('E9') for it in items):
+            items.append([exc.lineno or 1, (exc.offset or 0) + 1, 'E999',
+                          'SyntaxError: %s' % exc.msg])
+    exempt = hdr_end if has_hdr else 0
+    kept = sorted((it for it in items if it[0] > exempt),
+                  key=lambda it: (it[0], it[1]))
+    loc = 0
+    for idx, line in enumerate(lines):
+        s = line.strip()
+        if idx >= exempt and s and not s.startswith('#'):
+            loc += 1
+    return json.dumps({
+        'items': kept,
+        'header_end': exempt,
+        'has_header': has_hdr,
+        'loc': loc,
+        'total_lines': len(lines),
+        'syntax': syntax,
+        'test_cases': find_test_cases(source),
+    })
+</script>
+<script type="text/x-python" id="runsrc">
+import builtins
+import json
+import os
+import sys
+import time
+import traceback
+
+# Classroom programs often clear the screen or pause for effect.
+# Neither works (or matters) here, so make them harmless.
+os.system = lambda *args, **kwargs: 0
+time.sleep = lambda *args, **kwargs: None
+
+_GRAPHICS = {'turtle', 'tkinter', '_tkinter', 'pygame'}
+
+
+class _Stop(BaseException):
+    """Raised when the program prints too much (likely an endless loop)."""
+
+
+class _NeedInput(BaseException):
+    """Raised when the program asks for more input than the test supplies."""
+
+
+class _Out:
+    def __init__(self, limit):
+        self.parts = []
+        self.size = 0
+        self.limit = limit
+
+    def write(self, s):
+        s = str(s)
+        self.parts.append(s)
+        self.size += len(s)
+        if self.size > self.limit:
+            raise _Stop()
+        return len(s)
+
+    def flush(self):
+        pass
+
+    def isatty(self):
+        return False
+
+    def text(self):
+        return ''.join(self.parts)
+
+
+def _student_line(exc):
+    line = None
+    for frame in traceback.extract_tb(exc.__traceback__):
+        if frame.filename == '<student>':
+            line = frame.lineno
+    return line
+
+
+def run_student(source, inputs_json):
+    feed = json.loads(inputs_json)
+    out = _Out(200000)
+    pos = [0]
+
+    def fake_input(prompt=''):
+        out.write(str(prompt))
+        if pos[0] >= len(feed):
+            out.write('\n')
+            raise _NeedInput()
+        value = feed[pos[0]]
+        pos[0] += 1
+        out.write(value + '\n')  # echo, like a terminal shows typed text
+        return value
+
+    saved = (sys.stdout, sys.stderr, builtins.input)
+    sys.stdout = out
+    sys.stderr = out
+    builtins.input = fake_input
+    status, error, line = 'ok', None, None
+    try:
+        code = compile(source, '<student>', 'exec')
+        exec(code, {'__name__': '__main__', '__builtins__': builtins})
+    except _Stop:
+        status = 'output_limit'
+        error = 'Printed too much output (possible endless loop)'
+    except _NeedInput:
+        status = 'needs_input'
+        error = 'Asked for more input than this test provides'
+    except SystemExit:
+        status = 'ok'
+    except SyntaxError as exc:
+        status = 'syntax'
+        error = 'SyntaxError: %s' % exc.msg
+        line = exc.lineno
+    except ModuleNotFoundError as exc:
+        line = _student_line(exc)
+        if (exc.name or '').split('.')[0] in _GRAPHICS:
+            status = 'unsupported'
+            error = "Uses %s, which can't run in the browser" % exc.name
+        else:
+            status = 'crashed'
+            error = 'ModuleNotFoundError: %s' % exc
+    except BaseException as exc:
+        status = 'crashed'
+        error = '%s: %s' % (type(exc).__name__, exc)
+        line = _student_line(exc)
+    finally:
+        sys.stdout, sys.stderr, builtins.input = saved
+    return json.dumps({'status': status, 'error': error, 'line': line,
+                       'output': out.text(), 'inputs_used': pos[0]})
+</script>
+<script src="https://cdn.jsdelivr.net/pyodide/v0.26.4/full/pyodide.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+
+const CATEGORIES = [
+  { id: "indent", name: "Indentation", re: /^(E1|W1)/ },
+  { id: "space", name: "Whitespace", re: /^(E2|W2)/ },
+  { id: "blank", name: "Blank lines", re: /^(E3|W3)/ },
+  { id: "imports", name: "Imports", re: /^E4/ },
+  { id: "length", name: "Line length", re: /^E5/ },
+  { id: "stmt", name: "Statements", re: /^E7/ },
+  { id: "naming", name: "Naming", re: /^N/ },
+  { id: "other", name: "Other", re: /./ }
+];
+const catOf = (code) => CATEGORIES.find((c) => c.re.test(code)).id;
+const catName = (id) => CATEGORIES.find((c) => c.id === id).name;
+
+const FRIENDLY = {
+  E101: "Indentation mixes tabs and spaces",
+  E111: "Indent with a multiple of 4 spaces",
+  E112: "An indented block is expected here",
+  E113: "This line is indented when it shouldn't be",
+  E114: "Comment indentation isn't a multiple of 4 spaces",
+  E115: "Indent this comment to match the code block",
+  E116: "This comment is indented when it shouldn't be",
+  E117: "This line is over-indented",
+  E121: "Continuation line isn't indented correctly",
+  E122: "Continuation line is missing indentation",
+  E123: "Closing bracket doesn't match the opening line's indentation",
+  E124: "Closing bracket doesn't line up with its opening line",
+  E125: "Continuation line needs more indentation than the next line",
+  E126: "Continuation line is indented too far",
+  E127: "Continuation line is indented too far",
+  E128: "Continuation line isn't indented far enough",
+  E129: "Continuation line looks like the next line; indent it differently",
+  E131: "Continuation line isn't aligned",
+  E201: "Remove the space just inside the opening bracket",
+  E202: "Remove the space just before the closing bracket",
+  E203: "Remove the space before the comma, colon, or semicolon",
+  E211: "Remove the space before the opening parenthesis",
+  E221: "Use only one space before the operator",
+  E222: "Use only one space after the operator",
+  E223: "Use a space, not a tab, before the operator",
+  E224: "Use a space, not a tab, after the operator",
+  E225: "Put spaces around the operator",
+  E226: "Put spaces around the arithmetic operator",
+  E227: "Put spaces around the bitwise or shift operator",
+  E228: "Put spaces around the % operator",
+  E231: "Add a space after the comma, colon, or semicolon",
+  E241: "Use only one space after the comma",
+  E242: "Use a space, not a tab, after the comma",
+  E251: "No spaces around = in keyword arguments or default values",
+  E252: "Put spaces around = when the parameter has a type hint",
+  E261: "Put two spaces before an inline comment",
+  E262: "Start inline comments with \"# \"",
+  E265: "Start block comments with \"# \"",
+  E266: "Start block comments with a single \"#\"",
+  E271: "Use only one space after the keyword",
+  E272: "Use only one space before the keyword",
+  E273: "Use a space, not a tab, after the keyword",
+  E274: "Use a space, not a tab, before the keyword",
+  E275: "Add a space after the keyword",
+  E301: "Put 1 blank line before this method",
+  E302: "Put 2 blank lines before this function or class",
+  E303: "Too many blank lines in a row",
+  E304: "Remove the blank line after the decorator",
+  E305: "Put 2 blank lines after a function or class ends",
+  E306: "Put 1 blank line before this nested function",
+  E401: "Put each import on its own line",
+  E402: "Move imports to the top of the file",
+  E501: "Line is too long",
+  E502: "Remove the unneeded backslash inside brackets",
+  E701: "Put the code after the colon on its own line",
+  E702: "Put each statement on its own line (no semicolons)",
+  E703: "Remove the semicolon at the end of the line",
+  E704: "Put the function body on its own line",
+  E711: "Use \"is None\" or \"is not None\" instead of == or !=",
+  E712: "Don't compare to True or False with ==; use the value directly",
+  E713: "Write \"x not in y\" instead of \"not x in y\"",
+  E714: "Write \"x is not y\" instead of \"not x is y\"",
+  E721: "Use isinstance() instead of comparing types",
+  E722: "Name the exception instead of using a bare \"except:\"",
+  E731: "Use def instead of assigning a lambda to a name",
+  E741: "Avoid the names l, O, or I (they look like 1 and 0)",
+  E742: "Avoid naming a class l, O, or I",
+  E743: "Avoid naming a function l, O, or I",
+  E901: "Syntax error: the code can't be read by Python",
+  E902: "The file couldn't be checked",
+  E999: "Syntax error: the code can't be read by Python",
+  W191: "Indent with spaces, not tabs",
+  W291: "Remove trailing spaces at the end of the line",
+  W292: "Add a newline at the end of the file",
+  W293: "Remove spaces from this blank line",
+  W391: "Remove extra blank lines at the end of the file",
+  W605: "Invalid escape sequence in a string (use a raw string or \\\\)",
+  N801: "Class names should use CapWords",
+  N802: "Function names should be lowercase_with_underscores",
+  N803: "Argument names should be lowercase_with_underscores",
+  N806: "Variables inside functions should be lowercase_with_underscores",
+  N816: "Module-level variables should be lowercase_with_underscores (or ALL_CAPS for constants)"
+};
+
+const DEFAULTS = {
+  t5: 0, t4: 2, t3: 4, t2: 6,
+  weights: Object.fromEntries(CATEGORIES.map((c) => [c.id, 1])),
+  headerDeduct: true, naming: true, minLines: 25, maxLen: 79,
+  tcCheck: true, tcDeduct: false, tcMin: 1,
+  mode: "pep8", runInputs: "", runAlts: [], timeout: 5, runDeduct: true, rubric: true, tests: [], reportTitle: ""
+};
+const STORE_KEY = "pep8-checker-settings-v1";
+let settings = loadSettings();
+
+function loadSettings() {
+  try {
+    const raw = localStorage.getItem(STORE_KEY);
+    if (raw) {
+      const s = JSON.parse(raw);
+      return { ...DEFAULTS, ...s, weights: { ...DEFAULTS.weights, ...(s.weights || {}) } };
+    }
+  } catch (e) { /* storage unavailable */ }
+  return structuredClone(DEFAULTS);
+}
+function saveSettings() {
+  try { localStorage.setItem(STORE_KEY, JSON.stringify(settings)); } catch (e) { /* ignore */ }
+}
+
+/* ---------- state ---------- */
+let pyodide = null;
+let checkFn = null;
+let ready = false;
+const queue = [];
+let running = false;
+let results = [];      // {id, student, canvasId, late, file, path, source, raw}
+let others = [];       // non-Python files: {student, canvasId, late, file, path, kind}
+let nextId = 1;
+let sortKey = "student";
+let sortDir = 1;
+let selectedId = null;
+
+/* ---------- Python ---------- */
+async function initPython() {
+  const st = $("status");
+  try {
+    pyodide = await loadPyodide();
+    $("statusText").textContent = "Installing pycodestyle…";
+    await pyodide.loadPackage("micropip");
+    await pyodide.pyimport("micropip").install("pycodestyle");
+    pyodide.runPython(document.getElementById("pysrc").textContent);
+    checkFn = pyodide.globals.get("check");
+    ready = true;
+    st.className = "status ready";
+    $("statusText").textContent = "Ready";
+    runQueue();
+  } catch (err) {
+    console.error(err);
+    st.className = "status error";
+    $("statusText").textContent = "Couldn't load Python. Check your internet connection and reload.";
+  }
+}
+
+function runCheck(source) {
+  const json = checkFn(source, settings.maxLen, settings.naming);
+  return JSON.parse(json);
+}
+
+/* ---------- Canvas name parsing ---------- */
+/* ---------- class roster (Canvas gradebook export) ---------- */
+// Canvas squashes names in downloads ("garciamaria"), so Last_First comes from the roster, matched by Canvas ID.
+const ROSTER_KEY = "pep8-checker-roster-v1";
+let roster = (() => { try { return JSON.parse(localStorage.getItem(ROSTER_KEY) || "{}"); } catch (e) { return {}; } })();
+function saveRoster() { try { localStorage.setItem(ROSTER_KEY, JSON.stringify(roster)); } catch (e) { /* ignore */ } }
+
+function parseCsv(text) {
+  const rows = [];
+  let row = [], field = "", q = false;
+  text = text.replace(/^\ufeff/, "");
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (q) {
+      if (c === '"') { if (text[i + 1] === '"') { field += '"'; i++; } else q = false; }
+      else field += c;
+    } else if (c === '"') q = true;
+    else if (c === ",") { row.push(field); field = ""; }
+    else if (c === "\n" || c === "\r") {
+      if (c === "\r" && text[i + 1] === "\n") i++;
+      row.push(field); rows.push(row); row = []; field = "";
+    } else field += c;
+  }
+  if (field || row.length) { row.push(field); rows.push(row); }
+  return rows;
+}
+
+function rosterEntry(id) {
+  const v = id ? roster[id] : null;
+  if (!v) return null;
+  return typeof v === "string" ? { name: v, period: "" } : v;
+}
+// "PLTW Computer Science Principles-P04-YR-Virak" -> "Period 4"
+function periodFrom(section) {
+  const s = String(section || "").trim();
+  const m = s.match(/(?:^|[-\s_(])P(?:er(?:iod)?)?\.?\s*0*(\d{1,2})(?=$|[-\s_),])/i);
+  return m ? `Period ${m[1]}` : s;
+}
+function rosterName(last, first) {
+  last = String(last || "").trim(); first = String(first || "").trim();
+  return last && first ? `${last}_${first}` : last || first;
+}
+
+function importRoster(text) {
+  const rows = parseCsv(text).filter((r) => r.some((c) => c.trim()));
+  if (!rows.length) return -1;
+  const head = rows[0].map((h) => h.trim().toLowerCase());
+  const idCol = head.findIndex((h) => h === "id" || h === "canvas user id" || h === "user id");
+  const studentCol = head.findIndex((h) => h === "student" || h === "name" || h === "student name");
+  const lastCol = head.findIndex((h) => h === "last name" || h === "last");
+  const firstCol = head.findIndex((h) => h === "first name" || h === "first");
+  const sectionCol = head.findIndex((h) => h === "section" || h === "sections" || h === "period");
+  if (idCol < 0 || (studentCol < 0 && (lastCol < 0 || firstCol < 0))) return -1;
+  let added = 0;
+  for (const r of rows.slice(1)) {
+    const id = (r[idCol] || "").trim();
+    if (!/^\d+$/.test(id)) continue; // skips Canvas's "Points Possible" row
+    let name;
+    if (lastCol >= 0 && firstCol >= 0) name = rosterName(r[lastCol], r[firstCol]);
+    else {
+      const full = (r[studentCol] || "").trim();
+      const comma = full.indexOf(",");
+      name = comma > 0 ? rosterName(full.slice(0, comma), full.slice(comma + 1)) : full;
+    }
+    if (name) { roster[id] = { name, period: sectionCol >= 0 ? periodFrom(r[sectionCol]) : "" }; added++; }
+  }
+  saveRoster();
+  return added;
+}
+
+function applyRoster() {
+  for (const r of [...results, ...others]) {
+    const e = rosterEntry(r.canvasId);
+    if (e) { r.student = e.name; r.period = e.period || ""; }
+    else { if (r.squashed) r.student = titleCase(r.squashed); r.period = ""; }
+  }
+  updateRosterStatus();
+  render();
+}
+function updateRosterStatus() {
+  const n = Object.keys(roster).length;
+  $("rosterStatus").textContent = n ? `Roster: ${n} student${n === 1 ? "" : "s"} loaded. Names show as Last_First.` : "No roster loaded. Canvas names will show squashed together (Garciamaria).";
+  $("clearRoster").hidden = !n;
+}
+
+function parseName(path) {
+  const base = path.split("/").pop();
+  const m = base.match(/^([a-z][a-z0-9'\-]*?)(_late)?_(\d+)_(\d+)_(.+)$/i);
+  if (m) {
+    const e = rosterEntry(m[3]);
+    return { student: e ? e.name : titleCase(m[1]), period: e ? e.period || "" : "", squashed: m[1], late: !!m[2], canvasId: m[3], file: m[5] };
+  }
+  return { student: base.replace(/\.py$/i, ""), period: "", late: false, canvasId: "", file: base };
+}
+function titleCase(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
+
+/* ---------- ingestion ---------- */
+function isPy(name) { return /\.py$/i.test(name); }
+function skipName(path) { return path.split("/").some((p) => p.startsWith(".") || p === "__MACOSX" || p === "__pycache__"); }
+
+async function addFiles(fileList) {
+  const items = [];
+  for (const f of fileList) {
+    const path = f.webkitRelativePath || f._path || f.name;
+    if (skipName(path)) continue;
+    if (/\.zip$/i.test(f.name)) {
+      try {
+        const zip = await JSZip.loadAsync(f);
+        const entries = Object.values(zip.files).filter((z) => !z.dir && !skipName(z.name));
+        for (const z of entries) {
+          if (isPy(z.name)) items.push({ path: z.name, text: await z.async("string") });
+          else addOther(z.name);
+        }
+      } catch (e) {
+        toast(`Couldn't open ${f.name}. Make sure it's a regular .zip file.`);
+      }
+    } else if (isPy(f.name)) {
+      items.push({ path, text: await f.text() });
+    } else {
+      addOther(path);
+    }
+  }
+  if (!items.length) {
+    render();
+    toast("No .py files found in what you added.");
+    return;
+  }
+  enqueue(items);
+}
+
+const KINDS = [
+  { kind: "image", re: /\.(png|jpe?g|gif|bmp|webp|heic|heif|tiff?)$/i },
+  { kind: "document", re: /\.(pdf|docx?|txt|rtf|odt|pages|md)$/i },
+  { kind: "file", re: /./ }
+];
+function addOther(path) {
+  const info = parseName(path);
+  const kind = KINDS.find((k) => k.re.test(path)).kind;
+  others.push({ ...info, path, kind });
+}
+function kindSummary(list) {
+  const counts = {};
+  for (const o of list) counts[o.kind] = (counts[o.kind] || 0) + 1;
+  return Object.entries(counts).map(([k, n]) => `${n} ${k}${n === 1 ? "" : "s"}`).join(", ");
+}
+function othersFor(rec) {
+  return rec.canvasId ? others.filter((o) => o.canvasId === rec.canvasId) : [];
+}
+/* Canvas students who sent files but no .py file */
+function missingPython() {
+  const haveCode = new Set(results.map((r) => r.canvasId).filter(Boolean));
+  const byId = new Map();
+  for (const o of others) {
+    if (!o.canvasId || haveCode.has(o.canvasId)) continue;
+    if (!byId.has(o.canvasId)) byId.set(o.canvasId, { missing: true, student: o.student, period: o.period || "", canvasId: o.canvasId, late: false, files: [] });
+    const m = byId.get(o.canvasId);
+    m.files.push(o);
+    if (o.late) m.late = true;
+  }
+  return [...byId.values()];
+}
+
+function enqueue(items) {
+  for (const it of items) {
+    const info = parseName(it.path);
+    const rec = { id: nextId++, path: it.path, source: it.text, raw: null, ...info };
+    results.push(rec);
+    queue.push(rec);
+  }
+  render();
+  runQueue();
+}
+
+async function runQueue() {
+  if (!ready || running) return;
+  running = true;
+  const total = queue.length;
+  let done = 0;
+  while (queue.length) {
+    const rec = queue.shift();
+    done++;
+    $("progress").textContent = `Checking ${done} of ${total}…`;
+    try { rec.raw = runCheck(rec.source); }
+    catch (e) {
+      console.error(e);
+      rec.raw = { items: [[1, 1, "E902", String(e)]], header_end: 0, has_header: false, loc: 0, total_lines: 0, syntax: null };
+    }
+    if (done % 5 === 0) { render(); await new Promise((r) => setTimeout(r, 0)); }
+  }
+  $("progress").textContent = total ? `Checked ${total} file${total === 1 ? "" : "s"}.` : "";
+  running = false;
+  render();
+  scheduleRuns();
+}
+
+function recheckAll() {
+  for (const r of results) { r.raw = null; if (!queue.includes(r)) queue.push(r); }
+  render();
+  runQueue();
+}
+
+/* drag & drop with folder traversal */
+function readEntry(entry, prefix) {
+  return new Promise((resolve) => {
+    if (entry.isFile) {
+      entry.file((f) => { f._path = prefix + f.name; resolve([f]); }, () => resolve([]));
+    } else if (entry.isDirectory) {
+      const reader = entry.createReader();
+      const all = [];
+      const readBatch = () => reader.readEntries(async (ents) => {
+        if (!ents.length) {
+          const nested = await Promise.all(all.map((e) => readEntry(e, prefix + entry.name + "/")));
+          resolve(nested.flat());
+        } else { all.push(...ents); readBatch(); }
+      }, () => resolve([]));
+      readBatch();
+    } else resolve([]);
+  });
+}
+
+/* ---------- scoring ---------- */
+function score(rec) {
+  const raw = rec.raw;
+  if (!raw) return null;
+  const groups = new Map();
+  for (const [line, col, code, text] of raw.items) {
+    if (!groups.has(code)) groups.set(code, { code, cat: catOf(code), msg: FRIENDLY[code] || text, occ: [] });
+    groups.get(code).occ.push({ line, col, text });
+  }
+  const list = [...groups.values()].sort((a, b) => b.occ.length - a.occ.length || a.code.localeCompare(b.code));
+  const weighted = list.reduce((s, g) => s + Number(settings.weights[g.cat] ?? 1), 0);
+  const total = raw.items.length;
+  let band = 1;
+  if (weighted <= settings.t5) band = 5;
+  else if (weighted <= settings.t4) band = 4;
+  else if (weighted <= settings.t3) band = 3;
+  else if (weighted <= settings.t2) band = 2;
+  const deduct = !raw.has_header && settings.headerDeduct ? 1 : 0;
+  const run = computeRun(rec, { syntax: raw.syntax });
+  const tc = testCaseInfo(rec);
+  const useRubric = rubricOn();
+  let runDeduct = 0, calculated, rubric = null, steps = [];
+  if (useRubric) {
+    tc.deduct = 0;                 // missing test cases show in the Submission column instead
+    rubric = rubricScore(run, raw.syntax, band, tc);
+    steps = rubric.steps.slice();
+    calculated = rubric.suggested;
+    if (deduct) {
+      const before = calculated;
+      calculated = Math.max(1, calculated - deduct);
+      steps.push(`Header missing: −1 → ${calculated}${before - deduct < 1 ? " (lowest score is 1)" : ""}`);
+    }
+  } else {
+    runDeduct = runDeduction(run);
+    calculated = Math.max(1, band - deduct - runDeduct - tc.deduct);
+    steps.push(`Style band ${band}`);
+    if (deduct) steps.push("Header missing: −1");
+    if (runDeduct) steps.push("Program didn't run: −1");
+    if (tc.deduct) steps.push("Not enough test cases: −1");
+    if (steps.length > 1) steps.push(`= ${calculated}${band - deduct - runDeduct - tc.deduct < 1 ? " (lowest score is 1)" : ""}`);
+  }
+  const ov = getOverride(rec);
+  const overridden = !!(ov && ov.score);
+  const final = overridden ? ov.score : calculated;
+  return {
+    run, runDeduct, tc, rubric, steps, calculated, overridden, note: ov ? ov.note || "" : "",
+    groups: list, unique: list.length, weighted: Math.round(weighted * 100) / 100, total, band, deduct, final,
+    hasHeader: raw.has_header, headerEnd: raw.header_end, loc: raw.loc,
+    short: raw.loc < settings.minLines, syntax: raw.syntax,
+    top: list[0] ? list[0] : null
+  };
+}
+
+/* ---------- 3-column rubric (same scoring as the CSA Java grader) ---------- */
+// Program & Output: 0 failed checks → 5, 1 → 4, up to half → 3, more → 2; syntax error → 2.
+// Style: the style band. Submission: 5, or 4 when required test cases are missing.
+// Suggested = rounded average, never above Program & Output; syntax error ≤ 2; missing test cases ≤ 4; header −1.
+function rubricOn() { return !!settings.rubric && settings.mode !== "pep8"; }
+function outputScore(run, syntax) {
+  if (syntax || (run && run.status === "syntax")) return { score: 2, failed: 0, total: 0, units: [], syntax: true };
+  const units = [];        // {label, pass} — one "program finished" unit per test, then its checks
+  for (const t of (run && run.tests) || []) {
+    if (t.status === "pending") continue;
+    const st = STATUS[t.status] || STATUS.crashed;
+    if (t.status === "unsupported" || t.status === "runner_error") {
+      units.push({ label: `${t.name}: ${st.label}`, pass: null, key: t.status }); // can't judge here; teacher checks
+      continue;
+    }
+    const finished = t.status === "ok";
+    units.push({ label: `${t.name}: program finished`, pass: finished, key: finished ? "" : `${t.status}|${t.error || ""}` });
+    // checks still count after a crash: output that was printed before the crash can pass
+    for (const c of t.checks || []) units.push({ label: `${t.name}: ${c.label}`, pass: c.pass, key: c.label });
+  }
+  const judged = units.filter((u) => u.pass !== null);
+  // the same problem in several tests (one crash, one wrong line) counts once
+  const seen = new Set();
+  let failed = 0;
+  for (const u of judged.filter((x) => !x.pass)) { if (seen.has(u.key)) continue; seen.add(u.key); failed++; }
+  const total = judged.length;
+  let score = 5;
+  if (!total) score = 5;
+  else if (failed === 0) score = 5;
+  else if (failed === 1) score = 4;
+  else if (failed / total <= 0.5) score = 3;
+  else score = 2;
+  return { score, failed, total, units, syntax: false };
+}
+function rubricScore(run, syntax, band, tc) {
+  const out = outputScore(run, syntax);
+  const output = out.score, style = band;
+  const needTests = settings.tcCheck && settings.tcDeduct;
+  const submission = needTests && !tc.ok ? 4 : 5;
+  const average = (output + style + submission) / 3;
+  const avg = Math.round(average);
+  const shown = Number.isInteger(average) ? String(average) : average.toFixed(2);
+  const steps = [`Average of ${output}, ${style}, ${submission} = ${shown}${shown !== String(avg) ? `, rounds to ${avg}` : ""}`];
+  let suggested = avg;
+  if (output < suggested) { suggested = output; steps.push(`Can't be higher than Program & Output (${output}) → ${suggested}`); }
+  if (out.syntax && suggested > 2) { suggested = 2; steps.push("Syntax error, so at most 2 → 2"); }
+  if (needTests && !tc.ok && suggested > 4) { suggested = 4; steps.push("Not enough test cases, so at most 4 → 4"); }
+  return { output, style, submission, average, suggested, steps, out, pending: !!(run && run.pending) };
+}
+
+/* ---------- test cases written in the code ---------- */
+// Up to TC_MAX labeled test cases count: "TEST CASE 1:" ... "TEST CASE 4:" (or "TEST CASE: 1").
+const TC_MAX = 4;
+function testCaseInfo(rec) {
+  const nums = (rec.raw && rec.raw.test_cases) || [];
+  const counted = nums.filter((n) => n >= 1 && n <= TC_MAX);
+  const extra = nums.filter((n) => n < 1 || n > TC_MAX);
+  const docs = othersFor(rec).filter((o) => o.kind === "document" || o.kind === "image");
+  const need = Math.min(TC_MAX, Math.max(1, Number(settings.tcMin) || 1));
+  const ok = counted.length >= need || docs.length > 0;
+  return {
+    on: !!settings.tcCheck, nums, count: counted.length, extra, docs: docs.length, need, ok,
+    deduct: settings.tcCheck && settings.tcDeduct && !ok ? 1 : 0
+  };
+}
+function testCaseText(tc) {
+  let t = tc.count ? `${tc.count} test case${tc.count === 1 ? "" : "s"} found in the code (TEST CASE ${tc.nums.filter((n) => n >= 1 && n <= TC_MAX).join(", ")})`
+    : "No TEST CASE comments found in the code";
+  if (tc.extra.length) t += `; only TEST CASE 1 to ${TC_MAX} count, so ${tc.extra.map((n) => n).join(", ")} ${tc.extra.length === 1 ? "was" : "were"} skipped`;
+  if (tc.docs) t += `; also submitted ${tc.docs} test case file${tc.docs === 1 ? "" : "s"}`;
+  return t;
+}
+
+const SHORT_STATUS = { crashed: "Crash", timeout: "Timeout", output_limit: "Loop?", needs_input: "Input?", unsupported: "Graphics", runner_error: "Error", syntax: "Syntax", pending: "…" };
+
+/* ---------- period filter ---------- */
+let periodFilter = "";
+const periodNum = (p) => { const m = String(p || "").match(/\d+/); return m ? Number(m[0]) : 999; };
+function anyPeriods() { return results.some((r) => r.period) || others.some((o) => o.period); }
+function inPeriod(r) {
+  if (!periodFilter) return true;
+  if (periodFilter === "__none") return !r.period;
+  return r.period === periodFilter;
+}
+function updatePeriodFilter() {
+  const sel = $("periodFilter");
+  const periods = [...new Set([...results, ...others].map((r) => r.period).filter(Boolean))]
+    .sort((x, y) => periodNum(x) - periodNum(y) || x.localeCompare(y));
+  const noneCount = results.filter((r) => !r.period).length;
+  if (periodFilter && periodFilter !== "__none" && !periods.includes(periodFilter)) periodFilter = "";
+  if (periodFilter === "__none" && !noneCount) periodFilter = "";
+  sel.hidden = !periods.length;
+  sel.innerHTML = `<option value="">All periods</option>` + periods.map((p) => `<option value="${esc(p)}">${esc(p)}</option>`).join("") +
+    (noneCount && periods.length ? `<option value="__none">Not on roster</option>` : "");
+  sel.value = periodFilter;
+}
+function shortPeriod(p) {
+  if (!p) return "";
+  const m = p.match(/^Period\s*(\d+)$/i);
+  return m ? m[1] : p.length > 6 ? p.slice(0, 5) + "…" : p;
+}
+function periodSlug() {
+  if (!periodFilter) return "";
+  return "-" + (periodFilter === "__none" ? "not-on-roster" : periodFilter).replace(/[^\w\- ]+/g, "").replace(/\s+/g, "-").toLowerCase();
+}
+
+/* ---------- rendering ---------- */
+function getColumns() {
+  const cols = [
+    { key: "student", label: "Student" },
+    ...(anyPeriods() ? [{ key: "period", label: "Per", tip: "Class period", center: true }] : []),
+    { key: "loc", label: "Lines", tip: "Lines of code (not counting blanks, comments, or the header)", num: true },
+    { key: "unique", label: "Types", tip: "Unique types of mistake (what the grade is based on)", num: true },
+    { key: "total", label: "Errors", tip: "Total style errors, counting repeats", num: true },
+    { key: "band", label: rubricOn() ? "Style" : "Band", tip: rubricOn() ? "Style score, out of 5" : "Style band before deductions", num: true },
+    { key: "header", label: "Hdr", tip: "Header block: ✓ present, −1 missing", center: true },
+    ...(settings.tcCheck ? [{ key: "cases", label: "Cases", tip: `TEST CASE comments found (up to ${TC_MAX}); 📄 = a test case document or screenshot was submitted`, center: true }] : [])
+  ];
+  if (settings.mode !== "pep8") cols.push({ key: "runs", label: "Runs", tip: "Did the program run?" });
+  if (settings.mode === "tests") cols.push({ key: "tests", label: "Tests", tip: "Tests passed", num: true });
+  if (rubricOn()) cols.push({ key: "output", label: "Output", tip: "Program & Output, out of 5 (0 failed checks = 5, 1 = 4, up to half = 3, more = 2)", num: true },
+    { key: "sub", label: "Sub", tip: "Submission, out of 5 (4 when required test cases are missing)", num: true });
+  cols.push({ key: "final", label: "Final", tip: "Final score out of 5", num: true },
+    { key: "top", label: "Top issue", tip: "Most frequent mistake" }, { key: "flags", label: "Flags" });
+  return cols;
+}
+
+function renderHead() {
+  if (!getColumns().some((c) => c.key === sortKey)) { sortKey = "student"; sortDir = 1; }
+  $("theadRow").innerHTML = getColumns().map((c) => {
+    const active = sortKey === c.key;
+    const arrow = active ? (sortDir === 1 ? "▲" : "▼") : "";
+    const aria = active ? (sortDir === 1 ? "ascending" : "descending") : "none";
+    return `<th class="${c.num ? "num" : c.center ? "ctr" : ""}" aria-sort="${aria}"${c.tip ? ` title="${esc(c.tip)}"` : ""}><button type="button" data-sort="${c.key}">${c.label}<span class="arrow">${arrow}</span></button></th>`;
+  }).join("");
+}
+
+function sortValue(r, s) {
+  if (r.missing && sortKey !== "student" && sortKey !== "period") return sortKey === "flags" ? 16 : -1;
+  switch (sortKey) {
+    case "student": return (r.student + " " + (r.file || "")).toLowerCase();
+    case "period": return periodNum(r.period) * 10000 + (r.period ? 0 : 5000);
+    case "loc": return s ? s.loc : -1;
+    case "unique": return s ? s.unique : -1;
+    case "total": return s ? s.total : -1;
+    case "band": return s ? s.band : -1;
+    case "header": return s ? (s.hasHeader ? 1 : 0) : -1;
+    case "cases": return s ? s.tc.count + (s.tc.docs ? 0.5 : 0) : -1;
+    case "final": return s ? s.final : -1;
+    case "output": return s && s.rubric ? s.rubric.output : -1;
+    case "sub": return s && s.rubric ? s.rubric.submission : -1;
+    case "runs": return s && s.run ? STATUS[s.run.status].rank : -2;
+    case "tests": return s && s.run && s.run.total ? s.run.passed / s.run.total : -1;
+    case "top": return s && s.top ? s.top.code : "";
+    case "flags": return s ? (s.short ? 1 : 0) + (s.syntax ? 2 : 0) + (r.late ? 4 : 0) + (s.hasHeader ? 0 : 8) : -1;
+  }
+  return 0;
+}
+
+function esc(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+function mark(n, big) { return `<span class="mark s${n}${big ? " big" : ""}" aria-label="${n} out of 5">${n}</span>`; }
+
+function render() {
+  renderHead();
+  const COLUMNS = getColumns();
+  const tbody = $("tbody");
+  $("clearAll").hidden = results.length === 0 && others.length === 0;
+  const missing = missingPython();
+  if (!results.length && !missing.length) {
+    tbody.innerHTML = `<tr><td colspan="${COLUMNS.length}" class="empty">Add files above to see each student's style grade here.</td></tr>`;
+    $("stats").textContent = others.length ? `No .py files found. Skipped ${others.length} other file${others.length === 1 ? "" : "s"}.` : "No files checked yet.";
+    $("exportCsv").disabled = true;
+    $("pdfAll").disabled = true;
+    $("pdfSummary").disabled = true;
+    $("detail").hidden = true;
+    return;
+  }
+  updatePeriodFilter();
+  const showPeriod = anyPeriods();
+  const pcell = (r) => (showPeriod ? `<td class="ctr" title="${esc(r.period || "Not on roster")}">${esc(shortPeriod(r.period))}</td>` : "");
+  const rows = results.filter(inPeriod).map((r) => ({ r, s: score(r) })).concat(missing.filter(inPeriod).map((m) => ({ r: m, s: null })));
+  rows.sort((a, b) => {
+    const va = sortValue(a.r, a.s), vb = sortValue(b.r, b.s);
+    if (va < vb) return -sortDir;
+    if (va > vb) return sortDir;
+    return (a.r.id || 0) - (b.r.id || 0);
+  });
+  if (!rows.length) {
+    tbody.innerHTML = `<tr><td colspan="${COLUMNS.length}" class="empty">No files from ${periodFilter === "__none" ? "students missing from the roster" : esc(periodFilter)} yet.</td></tr>`;
+  } else tbody.innerHTML = rows.map(({ r, s }) => {
+    if (r.missing) {
+      const names = r.files.map((f) => f.file).join(", ");
+      return `<tr class="missing-row" style="cursor:default">
+        <td><span class="who">${esc(r.student)}</span><span class="file">no .py file</span></td>${pcell(r)}
+        <td colspan="${COLUMNS.length - 2 - (showPeriod ? 1 : 0)}"><span class="hdr-miss">No Python file found.</span> <span style="color:var(--muted)">Submitted ${esc(kindSummary(r.files))}: <span title="${esc(names)}">${esc(names.length > 60 ? names.slice(0, 57) + "…" : names)}</span></span></td>
+        <td><span class="flag warn" title="No Python file submitted">No .py</span>${r.late ? `<span class="flag">Late</span>` : ""}</td>
+      </tr>`;
+    }
+    const sel = r.id === selectedId ? " sel" : "";
+    const who = `<span class="who">${esc(r.student)}</span><span class="file" title="${esc(r.path)}">${esc(r.file)}</span>`;
+    if (!s) {
+      return `<tr data-id="${r.id}" tabindex="0" class="${sel}"><td>${who}</td>${pcell(r)}<td colspan="${COLUMNS.length - 1 - (showPeriod ? 1 : 0)}" style="color:var(--muted)">Waiting to check…</td></tr>`;
+    }
+    const flags = [];
+    if (s.syntax) flags.push(`<span class="flag warn" title="Syntax error">Syntax</span>`);
+    if (s.run && s.run.status === "needs_input") flags.push(`<span class="flag" title="Needs more input">Input</span>`);
+    if (s.run && s.run.status === "unsupported") flags.push(`<span class="flag">Graphics</span>`);
+    if (s.short) flags.push(`<span class="flag" title="Short sample: under ${settings.minLines} lines of code">Short</span>`);
+    if (r.late) flags.push(`<span class="flag">Late</span>`);
+    if (s.overridden) flags.push(`<span class="flag" title="Adjusted by you. Calculated score: ${s.calculated}">Adj</span>`);
+    const header = s.hasHeader ? `<span class="hdr-ok" title="Header present">✓</span>`
+      : `<span class="hdr-miss" title="No header block">${s.deduct ? "−1" : "✗"}</span>`;
+    const st = s.run ? STATUS[s.run.status] : null;
+    const runCell = s.run ? `<td title="${esc(st.label + (s.run.error ? ": " + s.run.error : ""))}"><span class="${st.cls}">${s.run.status === "ok" ? "✓" : SHORT_STATUS[s.run.status] || st.label}${s.runDeduct ? " −1" : ""}</span></td>` : "";
+    const testCell = settings.mode === "tests" ? `<td class="num">${s.run.pending ? "…" : `${s.run.passed}/${s.run.total}`}</td>` : "";
+    const top = s.top ? `<span title="${esc(s.top.msg)}">${esc(s.top.code)} ×${s.top.occ.length}</span>` : `<span class="clean">None</span>`;
+    return `<tr data-id="${r.id}" tabindex="0" class="${sel}">
+      <td>${who}</td>${pcell(r)}
+      <td class="num">${s.loc}</td>
+      <td class="num">${s.unique}</td>
+      <td class="num">${s.total}</td>
+      <td class="num"><span class="band-plain">${s.band}</span></td>
+      <td class="ctr">${header}</td>
+      ${settings.tcCheck ? `<td class="ctr" title="${esc(testCaseText(s.tc))}"><span class="${s.tc.ok ? "hdr-ok" : "hdr-miss"}">${s.tc.count}${s.tc.docs ? " 📄" : ""}${s.tc.deduct ? " −1" : ""}</span></td>` : ""}
+      ${runCell}${testCell}
+      ${s.rubric ? `<td class="num">${s.rubric.pending ? "…" : mark(s.rubric.output)}</td><td class="num">${mark(s.rubric.submission)}</td>` : ""}
+      <td class="num" title="${esc(s.steps.join("\n"))}">${mark(s.final)}</td>
+      <td>${top}</td>
+      <td class="flags">${flags.join("") || ""}</td>
+    </tr>`;
+  }).join("");
+
+  const scored = rows.filter((x) => x.s);
+  if (scored.length || missing.length) {
+    const avg = scored.length ? scored.reduce((t, x) => t + x.s.final, 0) / scored.length : 0;
+    const noHdr = scored.filter((x) => !x.s.hasHeader).length;
+    const short = scored.filter((x) => x.s.short).length;
+    const parts = [`${scored.length} file${scored.length === 1 ? "" : "s"} checked${periodFilter ? ` in ${periodFilter === "__none" ? "students not on the roster" : periodFilter}` : ""}`];
+    if (scored.length) parts.push(`average final score ${avg.toFixed(1)}`);
+    if (missing.length) parts.push(`${missing.length} student${missing.length === 1 ? "" : "s"} with no Python file`);
+    if (noHdr) parts.push(`${noHdr} missing a header`);
+    if (short) parts.push(`${short} short sample${short === 1 ? "" : "s"}`);
+    const noRun = scored.filter((x) => didntRun(x.s)).length;
+    if (noRun) parts.push(`${noRun} didn't run`);
+    const othersShown = others.filter(inPeriod);
+    if (othersShown.length) parts.push(`${othersShown.length} non-Python file${othersShown.length === 1 ? "" : "s"} skipped (${kindSummary(othersShown)})`);
+    $("stats").textContent = parts.join(", ") + ".";
+  } else {
+    $("stats").textContent = `${results.length} file${results.length === 1 ? "" : "s"} waiting to be checked.`;
+  }
+  $("exportCsv").disabled = !scored.length && !missing.length;
+  $("pdfAll").disabled = !scored.length || pdfBusy;
+  $("pdfSummary").disabled = !scored.length && !missing.length;
+  if (selectedId != null) renderDetail(false);
+}
+
+let lastDetailSig = "";
+function detailSig(rec) {
+  const runs = rec.runs ? [...rec.runs.entries()].map(([k, v]) => k + ":" + (v === "pending" ? "p" : v.status)).join(",") : "";
+  const ov = getOverride(rec);
+  return JSON.stringify(settings) + "|" + rec.id + "|" + (rec.raw ? 1 : 0) + "|" + runs + "|" + (ov && ov.score ? ov.score : "");
+}
+
+function renderDetail(scroll) {
+  const rec = results.find((r) => r.id === selectedId);
+  const box = $("detail");
+  if (!rec) { box.hidden = true; lastDetailSig = ""; return; }
+  const sig = detailSig(rec);
+  if (!scroll && sig === lastDetailSig && !box.hidden) return;
+  lastDetailSig = sig;
+  const s = score(rec);
+  box.hidden = false;
+  if (!s) { box.innerHTML = `<div class="detail-head"><h2>${esc(rec.student)}</h2><p>Waiting to check…</p></div>`; return; }
+
+  const lines = rec.source.replace(/\r\n?/g, "\n").split("\n");
+  if (lines.length && lines[lines.length - 1] === "") lines.pop();
+  const byLine = new Map();
+  for (const g of s.groups) for (const o of g.occ) {
+    if (!byLine.has(o.line)) byLine.set(o.line, []);
+    byLine.get(o.line).push(o);
+  }
+
+  const breakdown = s.rubric
+    ? [`<li>Program &amp; Output: <strong>${s.rubric.pending ? "…" : s.rubric.output}</strong> (${s.rubric.out.syntax ? "syntax error" : `${s.rubric.out.failed} of ${s.rubric.out.total} checks failed`})</li>`,
+      `<li>Style: <strong>${s.band}</strong> (${s.unique} unique mistake type${s.unique === 1 ? "" : "s"}, ${s.weighted} weighted point${s.weighted === 1 ? "" : "s"})</li>`,
+      `<li>Submission: <strong>${s.rubric.submission}</strong></li>`,
+      `<li>How the score is figured: ${esc(s.steps.join("; "))}</li>`]
+    : [`<li>Style band: <strong>${s.band}</strong> (${s.unique} unique mistake type${s.unique === 1 ? "" : "s"}, ${s.weighted} weighted point${s.weighted === 1 ? "" : "s"})</li>`];
+  if (!s.hasHeader) breakdown.push(`<li class="${s.deduct ? "minus" : ""}">No header block found${s.deduct ? ": −1 point" : " (not deducted)"}</li>`);
+  if (s.run && !s.run.pending && s.run.status !== "ok") breakdown.push(`<li class="${s.runDeduct ? "minus" : ""}">Program ${STATUS[s.run.status].label.toLowerCase()}${s.runDeduct ? ": −1 point" : ""}</li>`);
+  if (s.run && settings.mode === "tests" && !s.run.pending) breakdown.push(`<li>Tests passed: ${s.run.passed}/${s.run.total}${s.rubric ? "" : " (shown for feedback; doesn't change the score)"}</li>`);
+  if (s.tc.on) breakdown.push(`<li class="${s.tc.deduct ? "minus" : ""}">${esc(testCaseText(s.tc))}${s.tc.deduct ? `: fewer than ${s.tc.need}, −1 point` : ""}</li>`);
+  breakdown.push(`<li>Total mistakes: ${s.total}</li>`);
+  if (s.overridden) breakdown.push(`<li><strong>Adjusted by you</strong> from ${s.calculated} to ${s.final}</li>`);
+
+  let notes = "";
+  if (s.hasHeader) notes += `<p class="note ok">Header block found on lines 1–${s.headerEnd}. It isn't graded for style.</p>`;
+  else notes += `<p class="note bad">No header block at the top of the file.${s.deduct ? " This costs 1 point." : ""}</p>`;
+  if (s.short) notes += `<p class="note">Short sample: ${s.loc} lines of code, under the ${settings.minLines}-line minimum. The score may not reflect this student's habits.</p>`;
+  if (s.syntax) notes += `<p class="note bad">Python couldn't read this file (line ${s.syntax[0]}: ${esc(s.syntax[1])}). Some style checks may be missing.</p>`;
+  if (rec.late) notes += `<p class="note">Canvas marked this submission late.</p>`;
+  const extra = othersFor(rec);
+  if (extra.length) notes += `<p class="note">Also submitted ${esc(kindSummary(extra))} (not checked): ${esc(extra.map((o) => o.file).join(", "))}</p>`;
+
+  let issuesHtml = "";
+  if (!s.groups.length) issuesHtml = `<p class="clean">No PEP 8 mistakes found.</p>`;
+  else {
+    for (const c of CATEGORIES) {
+      const gs = s.groups.filter((g) => g.cat === c.id);
+      if (!gs.length) continue;
+      issuesHtml += `<h3>${c.name}</h3>`;
+      issuesHtml += gs.map((g) => `<div class="issue">
+          <div class="issue-top"><span class="issue-msg">${esc(g.msg)}</span><span class="count" aria-label="${g.occ.length} times">×${g.occ.length}</span></div>
+          <span class="code-id">${esc(g.code)}</span>
+          <div class="chips">${g.occ.map((o) => `<button type="button" class="chip" data-line="${o.line}" title="${esc(o.text)}">line ${o.line}</button>`).join("")}</div>
+        </div>`).join("");
+    }
+  }
+
+  let codeHtml = "";
+  lines.forEach((text, i) => {
+    const n = i + 1;
+    const hits = byLine.get(n);
+    const isHdr = s.hasHeader && n <= s.headerEnd;
+    const cls = hits ? "ln hit" : isHdr ? "ln hdr" : "ln";
+    const tags = hits ? [...new Set(byLineCodes(s, n))].join(" ") : (isHdr && n === 1 ? "header" : "");
+    const title = hits ? ` title="${esc(hits.map((h) => h.text).join("\n"))}"` : "";
+    codeHtml += `<div class="${cls}" id="L${rec.id}-${n}"${title}><span class="n">${n}</span><span class="src">${esc(text) || " "}</span><span class="codes">${esc(tags)}</span></div>`;
+  });
+  const extraLines = [...byLine.keys()].filter((n) => n > lines.length);
+  if (extraLines.length) {
+    const n = lines.length + 1;
+    codeHtml += `<div class="ln hit" id="L${rec.id}-${n}"><span class="n">${n}</span><span class="src"> </span><span class="codes">${esc(byLineCodes(s, n).join(" "))}</span></div>`;
+  }
+
+  box.innerHTML = `
+    <div class="detail-head">
+      ${mark(s.final, true)}
+      <div>
+        <h2>${esc(rec.student)}</h2>
+        <div class="code-id" title="${esc(rec.path)}">${esc(rec.file)}</div>
+        <ul class="breakdown">${breakdown.join("")}</ul>
+      </div>
+      <div class="detail-actions">
+        <button class="btn primary" type="button" id="pdfOne">Download PDF</button>
+        <button class="btn" type="button" id="copyFeedback">Copy feedback</button>
+        <button class="btn quiet" type="button" id="closeDetail">Back to class</button>
+      </div>
+    </div>
+    ${overrideHtml(rec, s)}
+    <div class="detail-body">
+      <div class="issues">${notes}${issuesHtml}</div>
+      <div class="codeview" id="codeview">${codeHtml}</div>
+    </div>
+    ${s.run ? runSectionHtml(s.run) : ""}`;
+  $("copyFeedback").onclick = () => copyText(feedbackText(rec, score(rec)), "Feedback copied");
+  $("pdfOne").onclick = () => downloadOnePdf(rec);
+  bindOverride(rec);
+  $("closeDetail").onclick = () => { selectedId = null; box.hidden = true; render(); document.querySelector(`#tbody tr[data-id="${rec.id}"]`)?.focus(); };
+  box.querySelectorAll(".chip, .jump").forEach((b) => b.addEventListener("click", () => jumpTo(rec.id, b.dataset.line)));
+  if (scroll) box.scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
+}
+
+function runSectionHtml(run) {
+  const statusLine = (t) => {
+    const st = STATUS[t.status];
+    let h = `<span class="${st.cls}">${st.label}</span>`;
+    if (t.error && t.status !== "ok") h += ` <span class="muted">${esc(t.error)}</span>`;
+    if (t.line) h += ` <button type="button" class="chip jump" data-line="${t.line}">line ${t.line}</button>`;
+    return h;
+  };
+  const outBlock = (t) => {
+    if (t.status === "pending") return `<p class="muted">Running…</p>`;
+    if (t.status === "syntax") return `<p class="muted">The program has a syntax error, so it couldn't run.</p>`;
+    return `<pre class="out">${esc(t.output || "") || '<span class="muted">(no output)</span>'}</pre>`;
+  };
+  let h = `<div class="runs"><h3>${settings.mode === "tests" ? "Tests" : "Running the program"}</h3>`;
+  if (settings.mode === "runs") {
+    const t = run.tests[0];
+    h += `<p class="run-status">${statusLine(t)}</p>`;
+    h += `<p class="hint">${t.alt ? `Ran with alternate inputs ${t.alt}` : "Inputs typed in"}: ${t.inputs.length ? esc(t.inputs.join(" / ")) : "none"}. Typed inputs are shown in the output the way a terminal displays them.</p>`;
+    h += outBlock(t);
+  } else {
+    if (!run.tests.length) h += `<p class="muted">No tests set up for this assignment yet.</p>`;
+    for (const t of run.tests) {
+      const icon = t.status === "pending" ? "…" : t.pass ? "✓" : "✗";
+      h += `<details class="test" ${!t.pass && t.status !== "pending" ? "open" : ""}>
+        <summary><span class="${t.pass ? "hdr-ok" : t.status === "pending" ? "" : "hdr-miss"}">${icon}</span> ${esc(t.name)}</summary>
+        <p class="run-status">${statusLine(t)}</p>
+        ${t.alts && t.status !== "pending" && t.status !== "syntax" ? `<p class="hint">${t.alt ? `${t.pass ? "Passed using" : "Closest result came from"} alternate inputs ${t.alt}` : t.pass ? "Passed using the main inputs" : `Main inputs and ${t.alts} alternate set${t.alts === 1 ? "" : "s"} tried; showing the main inputs`}: ${esc(t.inputs.join(" / ") || "none")}</p>` : ""}
+        ${t.checks.length ? `<ul class="check-results">${t.checks.map((c) => `<li><span class="${c.pass ? "hdr-ok" : "hdr-miss"}">${c.pass ? "✓" : "✗"}</span> ${esc(c.label)}${c.pass ? "" : `<div class="muted">${esc(c.detail)}</div>`}</li>`).join("")}</ul>` : ""}
+        ${outBlock(t)}
+      </details>`;
+    }
+  }
+  return h + "</div>";
+}
+
+function byLineCodes(s, n) {
+  const out = [];
+  for (const g of s.groups) if (g.occ.some((o) => o.line === n)) out.push(g.code);
+  return out;
+}
+
+function jumpTo(id, line) {
+  const el = document.getElementById(`L${id}-${line}`);
+  if (!el) return;
+  const view = $("codeview");
+  view.scrollTop = el.offsetTop - view.clientHeight / 3;
+  el.classList.add("flash");
+  setTimeout(() => el.classList.remove("flash"), 1200);
+}
+
+/* ---------- feedback & export ---------- */
+function lineList(occ) {
+  const ls = [...new Set(occ.map((o) => o.line))];
+  return ls.length > 12 ? ls.slice(0, 12).join(", ") + `, and ${ls.length - 12} more` : ls.join(", ");
+}
+
+function feedbackText(rec, s) {
+  const out = [];
+  out.push(`PEP 8 style check: ${rec.file}`);
+  let scoreLine = `Score: ${s.final}/5 (style band ${s.band}`;
+  if (s.deduct) scoreLine += ", missing header −1";
+  if (s.runDeduct) scoreLine += ", didn't run −1";
+  if (s.tc.deduct) scoreLine += ", missing test cases −1";
+  scoreLine += ")";
+  if (s.rubric) scoreLine = `Score: ${s.final}/5 (Program & Output ${s.rubric.output}, Style ${s.band}, Submission ${s.rubric.submission})`;
+  if (s.overridden) scoreLine = `Score: ${s.final}/5 (adjusted by your teacher)`;
+  out.push(scoreLine);
+  if (s.rubric) out.push(`How the score is figured: ${s.steps.join("; ")}.`);
+  if (s.note) out.push(`Note from your teacher: ${s.note}`);
+  out.push(`${s.unique} type${s.unique === 1 ? "" : "s"} of mistake, ${s.total} total. Each type counts once toward your score, no matter how many times it happens.`);
+  if (!s.hasHeader) out.push("No header block was found at the top of your file.");
+  if (s.tc.on) out.push(`Test cases: ${testCaseText(s.tc)}.${s.tc.deduct ? ` At least ${s.tc.need} needed (label them TEST CASE 1: to TEST CASE ${TC_MAX}: in a comment at the end of your program).` : ""}`);
+  if (s.syntax) out.push(`Python couldn't read your file (line ${s.syntax[0]}: ${s.syntax[1]}).`);
+  if (s.run && !s.run.pending) {
+    if (s.run.status !== "ok" && s.run.status !== "syntax") out.push(`Program run: ${STATUS[s.run.status].label}${s.run.error ? ` (${s.run.error}${s.run.line ? `, line ${s.run.line}` : ""})` : ""}${s.runDeduct ? ", −1 point" : ""}.`);
+    if (settings.mode === "tests") {
+      out.push(`Tests passed: ${s.run.passed}/${s.run.total}`);
+      for (const t of s.run.tests) {
+        if (t.pass) continue;
+        const why = t.status !== "ok" ? STATUS[t.status].label : t.checks.filter((c) => !c.pass).map((c) => `${c.label}: ${c.detail}`).join("; ");
+        out.push(`  ✗ ${t.name}: ${why}`);
+      }
+    }
+  }
+  if (s.groups.length) {
+    out.push("");
+    for (const g of s.groups) {
+      out.push(`- ${g.msg} (${g.code}), ${g.occ.length} time${g.occ.length === 1 ? "" : "s"}: line${g.occ.length === 1 ? "" : "s"} ${lineList(g.occ)}`);
+    }
+  } else out.push("No PEP 8 mistakes found. Nice work!");
+  return out.join("\n");
+}
+
+function csvCell(v) {
+  const s = String(v ?? "");
+  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+function exportCsv() {
+  const runCols = settings.mode !== "pep8";
+  const testCols = settings.mode === "tests";
+  const withPeriod = anyPeriods();
+  const head = ["Student", ...(withPeriod ? ["Period"] : []), "Canvas ID", "File", "Late", "Code Lines", "Unique Types", "Weighted Points", "Total Mistakes", "Style Band", "Header", "Header Deduction",
+    ...(settings.tcCheck ? ["Test Cases in Code", "Test Case Files", "Test Case Deduction"] : []),
+    ...(runCols ? ["Runs", "Run Error", "Run Deduction"] : []), ...(testCols ? ["Tests Passed"] : []),
+    ...(rubricOn() ? ["Program & Output", "Style", "Submission", "Average"] : []),
+    "Final Score", "Calculated Score", "How the Score Was Figured", "Teacher Note", "Short Sample", "Syntax Error", "Most Frequent Issue", "Notes"];
+  const lines = [head.join(",")];
+  const sorted = results.filter(inPeriod).sort((a, b) => periodNum(a.period) - periodNum(b.period) || a.student.localeCompare(b.student) || a.file.localeCompare(b.file));
+  for (const r of sorted) {
+    const s = score(r);
+    if (!s) continue;
+    lines.push([
+      r.student, ...(withPeriod ? [r.period || ""] : []), r.canvasId, r.file, r.late ? "Yes" : "No", s.loc, s.unique, s.weighted, s.total, s.band,
+      s.hasHeader ? "Present" : "Missing", s.deduct ? -1 : 0,
+      ...(settings.tcCheck ? [s.tc.count, s.tc.docs, s.tc.deduct ? -1 : 0] : []),
+      ...(runCols ? [STATUS[s.run.status].label, s.run.error ? `${s.run.error}${s.run.line ? `, line ${s.run.line}` : ""}` : "", s.runDeduct ? -1 : 0] : []),
+      ...(testCols ? [s.run.pending ? "" : `${s.run.passed}/${s.run.total}`] : []),
+      ...(rubricOn() ? (s.rubric ? [s.rubric.output, s.band, s.rubric.submission, Math.round(s.rubric.average * 100) / 100] : ["", "", "", ""]) : []),
+      s.final, s.calculated, s.steps.join("; "), s.note, s.short ? "Yes" : "No",
+      s.syntax ? "Yes" : "No", s.top ? `${s.top.code} ${s.top.msg} (x${s.top.occ.length})` : "",
+      othersFor(r).length ? `Also submitted ${kindSummary(othersFor(r))}` : ""
+    ].map(csvCell).join(","));
+  }
+  for (const m of missingPython().filter(inPeriod).sort((a, b) => periodNum(a.period) - periodNum(b.period) || a.student.localeCompare(b.student))) {
+    lines.push([
+      m.student, ...(withPeriod ? [m.period || ""] : []), m.canvasId, "(no .py file)", m.late ? "Yes" : "No",
+      ...Array(head.length - (withPeriod ? 6 : 5)).fill(""),
+      `No Python file submitted (${kindSummary(m.files)}: ${m.files.map((f) => f.file).join(", ")})`
+    ].map(csvCell).join(","));
+  }
+  const blob = new Blob(["\ufeff" + lines.join("\r\n")], { type: "text/csv;charset=utf-8" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  const d = new Date();
+  a.download = `pep8-grades${periodSlug()}-${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
+async function copyText(text, msg) {
+  try { await navigator.clipboard.writeText(text); toast(msg); }
+  catch (e) {
+    const ta = document.createElement("textarea");
+    ta.value = text; document.body.appendChild(ta); ta.select();
+    try { document.execCommand("copy"); toast(msg); } catch (e2) { toast("Copy failed. Select the text manually."); }
+    ta.remove();
+  }
+}
+
+let toastTimer;
+function toast(msg) {
+  const t = $("toast");
+  t.textContent = msg; t.classList.add("show");
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove("show"), 2400);
+}
+
+/* ---------- settings UI ---------- */
+function fillSettings() {
+  for (const k of ["t5", "t4", "t3", "t2", "minLines", "maxLen"]) $(k).value = settings[k];
+  $("headerDeduct").checked = settings.headerDeduct;
+  $("naming").checked = settings.naming;
+  $("tcCheck").checked = settings.tcCheck;
+  $("tcDeduct").checked = settings.tcDeduct;
+  $("tcMin").value = settings.tcMin;
+  $("tcDeductRow").hidden = !settings.tcCheck;
+  $("weights").innerHTML = CATEGORIES.map((c) => `<label class="mini">${c.name}<input type="number" min="0" step="0.5" data-w="${c.id}" value="${settings.weights[c.id]}"></label>`).join("");
+  $("weights").querySelectorAll("input").forEach((inp) => inp.addEventListener("input", () => {
+    const v = parseFloat(inp.value);
+    settings.weights[inp.dataset.w] = isNaN(v) ? 0 : v;
+    saveSettings(); render();
+  }));
+}
+
+function bindSettings() {
+  for (const k of ["t5", "t4", "t3", "t2", "minLines"]) {
+    $(k).addEventListener("input", () => {
+      const v = parseFloat($(k).value);
+      if (!isNaN(v)) { settings[k] = v; saveSettings(); render(); }
+    });
+  }
+  $("maxLen").addEventListener("change", () => {
+    const v = parseInt($("maxLen").value, 10);
+    if (!isNaN(v) && v >= 40) { settings.maxLen = v; saveSettings(); if (results.length) recheckAll(); }
+  });
+  $("headerDeduct").addEventListener("change", () => { settings.headerDeduct = $("headerDeduct").checked; saveSettings(); render(); });
+  $("naming").addEventListener("change", () => { settings.naming = $("naming").checked; saveSettings(); if (results.length) recheckAll(); });
+  $("tcCheck").addEventListener("change", () => { settings.tcCheck = $("tcCheck").checked; $("tcDeductRow").hidden = !settings.tcCheck; saveSettings(); render(); });
+  $("tcDeduct").addEventListener("change", () => { settings.tcDeduct = $("tcDeduct").checked; saveSettings(); render(); });
+  $("tcMin").addEventListener("input", () => {
+    const v = parseInt($("tcMin").value, 10);
+    if (!isNaN(v)) { settings.tcMin = Math.min(TC_MAX, Math.max(1, v)); saveSettings(); render(); }
+  });
+  $("resetSettings").addEventListener("click", () => {
+    const needRecheck = settings.maxLen !== DEFAULTS.maxLen || settings.naming !== DEFAULTS.naming;
+    const keep = { reportTitle: settings.reportTitle, mode: settings.mode, runInputs: settings.runInputs, runAlts: settings.runAlts, timeout: settings.timeout, runDeduct: settings.runDeduct, rubric: settings.rubric, tests: settings.tests };
+    settings = { ...structuredClone(DEFAULTS), ...keep }; saveSettings(); fillSettings();
+    if (needRecheck && results.length) recheckAll(); else render();
+    toast("Settings restored");
+  });
+}
+
+/* ---------- events ---------- */
+function bindEvents() {
+  $("pickFiles").addEventListener("click", () => $("fileInput").click());
+  $("pickFolder").addEventListener("click", () => $("folderInput").click());
+  $("fileInput").addEventListener("change", (e) => { addFiles([...e.target.files]); e.target.value = ""; });
+  $("folderInput").addEventListener("change", (e) => { addFiles([...e.target.files]); e.target.value = ""; });
+  $("clearAll").addEventListener("click", () => {
+    if (!confirm("Remove all checked files from this page?")) return;
+    results = []; others = []; queue.length = 0; runJobs.length = 0; selectedId = null; $("progress").textContent = ""; render();
+  });
+  $("pasteBtn").addEventListener("click", () => {
+    const code = $("pasteCode").value;
+    if (!code.trim()) { toast("Paste some Python code first."); return; }
+    const name = $("pasteName").value.trim() || "Pasted code";
+    const rec = { id: nextId++, path: "pasted.py", source: code, raw: null, student: name, late: false, canvasId: "", file: "pasted.py" };
+    results.push(rec); queue.push(rec); selectedId = rec.id;
+    render(); runQueue().then(() => renderDetail(true));
+    if (!ready) toast("Python is still loading. Your code will be checked as soon as it's ready.");
+  });
+
+  const drop = $("drop");
+  ["dragenter", "dragover"].forEach((t) => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.add("over"); }));
+  ["dragleave", "drop"].forEach((t) => drop.addEventListener(t, (e) => { e.preventDefault(); if (t === "dragleave" && drop.contains(e.relatedTarget)) return; drop.classList.remove("over"); }));
+  drop.addEventListener("drop", async (e) => {
+    const items = e.dataTransfer.items;
+    if (items && items.length && items[0].webkitGetAsEntry) {
+      const entries = [...items].map((i) => i.webkitGetAsEntry()).filter(Boolean);
+      const files = (await Promise.all(entries.map((en) => readEntry(en, "")))).flat();
+      addFiles(files);
+    } else addFiles([...e.dataTransfer.files]);
+  });
+  // stop the browser opening files dropped outside the zone
+  window.addEventListener("dragover", (e) => e.preventDefault());
+  window.addEventListener("drop", (e) => e.preventDefault());
+
+  $("theadRow").addEventListener("click", (e) => {
+    const b = e.target.closest("button[data-sort]");
+    if (!b) return;
+    const k = b.dataset.sort;
+    if (sortKey === k) sortDir = -sortDir; else { sortKey = k; sortDir = k === "student" ? 1 : -1; }
+    render();
+  });
+  const open = (tr) => { selectedId = Number(tr.dataset.id); render(); renderDetail(true); };
+  $("tbody").addEventListener("click", (e) => { const tr = e.target.closest("tr[data-id]"); if (tr) open(tr); });
+  $("tbody").addEventListener("keydown", (e) => {
+    const tr = e.target.closest("tr[data-id]");
+    if (tr && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); open(tr); }
+  });
+  $("exportCsv").addEventListener("click", exportCsv);
+  $("addRoster").addEventListener("click", () => $("rosterInput").click());
+  $("rosterInput").addEventListener("change", async (e) => {
+    const files = [...e.target.files];
+    e.target.value = "";
+    let total = 0, bad = 0;
+    for (const f of files) {
+      const n = importRoster(await f.text());
+      if (n < 0) bad++; else total += n;
+    }
+    if (bad && !total) toast("Couldn't find student names and IDs. Use Canvas: Grades > Export > Export Entire Gradebook.");
+    else toast(`Added ${total} student${total === 1 ? "" : "s"} to the roster`);
+    applyRoster();
+  });
+  $("clearRoster").addEventListener("click", () => {
+    if (!confirm("Remove the saved class roster? Names will go back to how Canvas squashes them.")) return;
+    roster = {}; saveRoster(); applyRoster();
+  });
+  updateRosterStatus();
+  $("periodFilter").addEventListener("change", () => { periodFilter = $("periodFilter").value; render(); });
+  $("pdfAll").addEventListener("click", downloadAllPdfs);
+  $("pdfSummary").addEventListener("click", downloadSummaryPdf);
+  $("reportTitle").value = settings.reportTitle || "";
+  $("reportTitle").addEventListener("input", () => { settings.reportTitle = $("reportTitle").value; saveSettings(); });
+}
+
+/* =====================  RUNNING & TESTS  ===================== */
+const STATUS = {
+  ok: { label: "Runs", rank: 0, deduct: false, cls: "hdr-ok" },
+  needs_input: { label: "Needs more input", rank: 1, deduct: false, cls: "mid" },
+  unsupported: { label: "Uses graphics", rank: 1, deduct: false, cls: "mid" },
+  runner_error: { label: "Couldn't run", rank: 1, deduct: false, cls: "mid" },
+  crashed: { label: "Crashed", rank: 2, deduct: true, cls: "hdr-miss" },
+  output_limit: { label: "Too much output", rank: 3, deduct: true, cls: "hdr-miss" },
+  timeout: { label: "Timed out", rank: 3, deduct: true, cls: "hdr-miss" },
+  syntax: { label: "Syntax error", rank: 4, deduct: true, cls: "hdr-miss" },
+  pending: { label: "Running…", rank: -1, deduct: false, cls: "" }
+};
+
+const CHECKS = {
+  contains: { label: "Output contains", fields: [["text", "text", "Text"], ["ignoreCase", "bool", "Ignore case"]], def: { text: "", ignoreCase: false } },
+  not_contains: { label: "Output doesn't contain", fields: [["text", "text", "Text"], ["ignoreCase", "bool", "Ignore case"]], def: { text: "", ignoreCase: false } },
+  line_exact: { label: "A line is exactly", fields: [["text", "text", "Line"]], def: { text: "" } },
+  last_line: { label: "Last line is", fields: [["text", "text", "Line"]], def: { text: "" } },
+  count: { label: "Text appears exactly", fields: [["text", "text", "Text"], ["n", "num", "Times"]], def: { text: "", n: 1 } },
+  number: { label: "Number appears", fields: [["value", "num", "Value"], ["tol", "num", "Within ±"]], def: { value: 0, tol: 0.01 } },
+  one_of: { label: "Line after a marker is one of", fields: [["marker", "text", "Marker text"], ["allowed", "list", "Allowed lines, one per line"], ["ignoreCase", "bool", "Ignore case"]], def: { marker: "", allowed: "", ignoreCase: true } },
+  vary: { label: "Lines after a marker vary", fields: [["marker", "text", "Marker text"], ["n", "num", "At least this many different"]], def: { marker: "", n: 2 } },
+  money_format: { label: "Money shows 2 decimals", fields: [], def: {} },
+  money_aligned: { label: "Money amounts line up", fields: [], def: {} }
+};
+
+const EIGHT_BALL_ANSWERS = ["It is certain.", "It is decidedly so.", "Without a doubt.", "Yes, definitely.", "You may rely on it.",
+  "As I see it, yes.", "Most likely.", "Outlook good.", "Yes.", "Signs point to yes.", "Reply hazy, try again.", "Ask again later.",
+  "Better not tell you now.", "Cannot predict now.", "Concentrate and ask again.", "Don't count on it.", "My reply is no.",
+  "My sources say no.", "Outlook not so good.", "Very doubtful."].join("\n");
+const MARKER = "The Magic 8-Ball says...";
+const EXAMPLE_PRESETS = [{
+  name: "Magic 8-Ball (example)", builtIn: true, mode: "tests", timeout: 5, runInputs: "Will I ace my CS test?\nno",
+  tests: [
+    { name: "Two questions, then quit", inputs: "Will I ace my CS test?\nyes\nWill it rain tomorrow?\nno", checks: [
+      { type: "line_exact", text: "Welcome to the Magic 8-Ball!" },
+      { type: "count", text: MARKER, n: 2 },
+      { type: "one_of", marker: MARKER, allowed: EIGHT_BALL_ANSWERS, ignoreCase: true },
+      { type: "last_line", text: "The Magic 8-Ball has spoken. Goodbye!" }
+    ] },
+    { name: "Answers vary", inputs: Array.from({ length: 10 }, (_, i) => `Question ${i + 1}?\n${i === 9 ? "no" : "yes"}`).join("\n"), checks: [
+      { type: "vary", marker: MARKER, n: 2 }
+    ] }
+  ]
+}];
+
+/* ---------- worker that runs student programs ---------- */
+const WORKER_SRC = `
+importScripts("https://cdn.jsdelivr.net/pyodide/v0.26.4/full/pyodide.js");
+let py, runFn;
+onmessage = async (e) => {
+  const m = e.data;
+  if (m.type === "init") {
+    try {
+      py = await loadPyodide();
+      py.runPython(m.runner);
+      runFn = py.globals.get("run_student");
+      postMessage({ type: "ready" });
+    } catch (err) { postMessage({ type: "error", error: String(err) }); }
+  } else if (m.type === "run") {
+    try { await py.loadPackagesFromImports(m.source); } catch (err) {}
+    postMessage({ type: "started" });
+    let res;
+    try { res = JSON.parse(runFn(m.source, m.inputs)); }
+    catch (err) { res = { status: "crashed", error: String(err), line: null, output: "" }; }
+    postMessage({ type: "result", result: res });
+  }
+};`;
+
+const Runner = {
+  worker: null, ready: null, job: null, failed: false,
+  start() {
+    const url = URL.createObjectURL(new Blob([WORKER_SRC], { type: "text/javascript" }));
+    this.worker = new Worker(url);
+    this.ready = new Promise((res, rej) => { this._res = res; this._rej = rej; });
+    this.ready.catch(() => {});
+    this.worker.onmessage = (e) => this.onMsg(e.data);
+    this.worker.onerror = (e) => { this._rej(e.message || "worker error"); };
+    this.worker.postMessage({ type: "init", runner: document.getElementById("runsrc").textContent });
+  },
+  onMsg(m) {
+    if (m.type === "ready") this._res();
+    else if (m.type === "error") this._rej(m.error);
+    else if (m.type === "started" && this.job) {
+      this.job.timer = setTimeout(() => this.onTimeout(), Math.max(1, settings.timeout) * 1000);
+    } else if (m.type === "result" && this.job) {
+      clearTimeout(this.job.timer);
+      const j = this.job; this.job = null; j.resolve(m.result);
+    }
+  },
+  onTimeout() {
+    const j = this.job; this.job = null;
+    this.worker.terminate();
+    this.start();
+    j.resolve({ status: "timeout", error: `Didn't finish within ${settings.timeout} seconds (possible endless loop)`, line: null, output: "" });
+  },
+  async run(source, inputs) {
+    if (!this.worker) this.start();
+    await this.ready;
+    return new Promise((resolve) => {
+      this.job = { resolve };
+      this.worker.postMessage({ type: "run", source, inputs: JSON.stringify(inputs) });
+    });
+  }
+};
+
+/* ---------- scheduling ---------- */
+const runJobs = [];
+let runBusy = false;
+function splitLines(s) {
+  const a = String(s || "").replace(/\r/g, "").split("\n");
+  while (a.length && a[a.length - 1] === "") a.pop();
+  return a;
+}
+function inputsKey(inputs) { return JSON.stringify(inputs) + "|" + settings.timeout; }
+function activeTests() {
+  if (settings.mode === "runs") return [{ name: "Run", inputs: settings.runInputs, alts: settings.runAlts || [], checks: [] }];
+  if (settings.mode === "tests") return settings.tests;
+  return [];
+}
+function inputSets(t) { return [splitLines(t.inputs), ...(t.alts || []).map(splitLines)]; }
+function neededInputs() { return activeTests().flatMap(inputSets); }
+function setPasses(t, res) {
+  return res && res !== "pending" && res.status === "ok" && (t.checks || []).every((c) => evalCheck(c, res.output || "").pass);
+}
+function scheduleRuns() {
+  if (settings.mode === "pep8") return;
+  const tests = activeTests();
+  for (const rec of results) {
+    if (!rec.raw || rec.raw.syntax) continue;
+    rec.runs = rec.runs || new Map();
+    for (const t of tests) {
+      const sets = inputSets(t);
+      // Alternates only run when the main inputs don't pass.
+      for (let i = 0; i < sets.length; i++) {
+        const k = inputsKey(sets[i]);
+        const res = rec.runs.get(k);
+        if (res === undefined) { rec.runs.set(k, "pending"); runJobs.push({ rec, inp: sets[i], k }); break; }
+        if (res === "pending" || setPasses(t, res)) break;
+      }
+    }
+  }
+  processRuns();
+}
+async function processRuns() {
+  if (runBusy) return;
+  runBusy = true;
+  let n = 0;
+  while (runJobs.length) {
+    const job = runJobs.shift();
+    const stillNeeded = results.includes(job.rec) && neededInputs().some((inp) => inputsKey(inp) === job.k);
+    if (!stillNeeded) { job.rec.runs && job.rec.runs.delete(job.k); continue; }
+    $("progress").textContent = Runner.worker ? `Running programs: ${runJobs.length + 1} left…` : "Starting the program runner…";
+    let res;
+    try { res = await Runner.run(job.rec.source, job.inp); }
+    catch (e) { res = { status: "runner_error", error: "The program runner couldn't load. Check your internet connection and reload.", line: null, output: "" }; }
+    job.rec.runs.set(job.k, res);
+    if (++n % 3 === 0 || !runJobs.length) render();
+  }
+  runBusy = false;
+  $("progress").textContent = n ? "Finished running programs." : $("progress").textContent;
+  render();
+  if (n) scheduleRuns(); // queue alternates for anything that didn't pass
+}
+
+/* ---------- checks ---------- */
+const MONEY = /\$\s*-?\d[\d,]*(?:\.\d+)?/g;
+const MONEY_END = /\$\s*-?\d[\d,]*(?:\.\d+)?$/;
+const short = (s, n = 50) => (s.length > n ? s.slice(0, n - 1) + "…" : s);
+
+function linesAfter(lines, marker) {
+  const out = [];
+  lines.forEach((l, i) => {
+    if (marker && l.includes(marker)) {
+      let j = i + 1;
+      while (j < lines.length && !lines[j].trim()) j++;
+      if (j < lines.length) out.push(lines[j].trim());
+    }
+  });
+  return out;
+}
+
+function evalCheck(c, text) {
+  const lines = text.replace(/\r/g, "").split("\n").map((l) => l.replace(/\s+$/, ""));
+  const fold = (s, ic) => (ic ? String(s).toLowerCase() : String(s));
+  switch (c.type) {
+    case "contains": {
+      const ok = fold(text, c.ignoreCase).includes(fold(c.text, c.ignoreCase));
+      return { pass: ok, detail: ok ? "" : `Didn't find "${short(c.text)}"` };
+    }
+    case "not_contains": {
+      const ok = !fold(text, c.ignoreCase).includes(fold(c.text, c.ignoreCase));
+      return { pass: ok, detail: ok ? "" : `Found "${short(c.text)}"` };
+    }
+    case "line_exact": {
+      const want = String(c.text).replace(/\s+$/, "");
+      const ok = lines.includes(want);
+      return { pass: ok, detail: ok ? "" : `No line exactly matches "${short(want)}"` };
+    }
+    case "last_line": {
+      const nonblank = lines.filter((l) => l.trim());
+      const last = nonblank.length ? nonblank[nonblank.length - 1] : "";
+      const ok = last.trim() === String(c.text).trim();
+      return { pass: ok, detail: ok ? "" : `Last line was "${short(last.trim())}"` };
+    }
+    case "count": {
+      const n = c.text ? text.split(c.text).length - 1 : 0;
+      const want = Number(c.n);
+      return { pass: n === want, detail: n === want ? "" : `Found ${n} time${n === 1 ? "" : "s"}, expected ${want}` };
+    }
+    case "number": {
+      const want = Number(c.value), tol = Math.abs(Number(c.tol) || 0);
+      const nums = (text.match(/-?\d[\d,]*\.?\d*/g) || []).map((x) => parseFloat(x.replace(/,/g, ""))).filter((x) => !isNaN(x));
+      const ok = nums.some((x) => Math.abs(x - want) <= tol + 1e-9);
+      return { pass: ok, detail: ok ? "" : `No number within ${tol} of ${want}` };
+    }
+    case "one_of": {
+      const allowed = new Set(splitLines(c.allowed).map((a) => fold(a.trim(), c.ignoreCase)).filter(Boolean));
+      const found = linesAfter(lines, c.marker);
+      if (!found.length) return { pass: false, detail: `"${short(c.marker)}" never appeared` };
+      const bad = found.filter((f) => !allowed.has(fold(f, c.ignoreCase)));
+      return { pass: !bad.length, detail: bad.length ? `Not on the list: "${short(bad[0])}"${bad.length > 1 ? ` and ${bad.length - 1} more` : ""}` : "" };
+    }
+    case "vary": {
+      const found = linesAfter(lines, c.marker);
+      const distinct = new Set(found).size;
+      const want = Number(c.n) || 2;
+      if (!found.length) return { pass: false, detail: `"${short(c.marker)}" never appeared` };
+      return { pass: distinct >= want, detail: distinct >= want ? "" : `Only ${distinct} different line${distinct === 1 ? "" : "s"} across ${found.length}` };
+    }
+    case "money_format": {
+      const found = text.match(MONEY) || [];
+      if (!found.length) return { pass: false, detail: "No dollar amounts found" };
+      const bad = found.filter((m) => !/\.\d{2}$/.test(m));
+      return { pass: !bad.length, detail: bad.length ? `${bad[0]} doesn't show 2 decimals` : "" };
+    }
+    case "money_aligned": {
+      const ends = lines.filter((l) => MONEY_END.test(l)).map((l) => l.length);
+      if (ends.length < 2) return { pass: false, detail: "Fewer than 2 lines end with a dollar amount" };
+      const cols = [...new Set(ends)];
+      return { pass: cols.length === 1, detail: cols.length === 1 ? "" : `Amounts end at different columns (${cols.slice(0, 4).join(", ")})` };
+    }
+  }
+  return { pass: false, detail: "Unknown check" };
+}
+
+function checkLabel(c) {
+  const d = CHECKS[c.type];
+  if (!d) return c.type;
+  switch (c.type) {
+    case "contains": case "not_contains": case "line_exact": case "last_line": return `${d.label} "${short(c.text, 40)}"`;
+    case "count": return `"${short(c.text, 40)}" appears exactly ${c.n} time${Number(c.n) === 1 ? "" : "s"}`;
+    case "number": return `Number ${c.value} appears (±${c.tol})`;
+    case "one_of": return `Line after "${short(c.marker, 30)}" is on the allowed list`;
+    case "vary": return `At least ${c.n} different lines after "${short(c.marker, 30)}"`;
+    default: return d.label;
+  }
+}
+
+/* ---------- per-file run summary ---------- */
+function worst(statuses) {
+  let w = "ok";
+  for (const s of statuses) if (STATUS[s] && STATUS[s].rank > STATUS[w].rank) w = s;
+  return w;
+}
+function computeRun(rec, style) {
+  if (settings.mode === "pep8") return null;
+  const tests = activeTests();
+  if (style.syntax) {
+    return {
+      status: "syntax", error: `SyntaxError: ${style.syntax[1]}`, line: style.syntax[0], pending: false,
+      tests: tests.map((t) => ({ name: t.name, status: "syntax", checks: [], pass: false, output: "", inputs: splitLines(t.inputs), alt: 0, alts: (t.alts || []).length })),
+      passed: 0, total: tests.length
+    };
+  }
+  const out = [];
+  let pending = false;
+  for (const t of tests) {
+    const sets = inputSets(t);
+    const tried = [];
+    let waiting = false;
+    for (let i = 0; i < sets.length; i++) {
+      const res = rec.runs && rec.runs.get(inputsKey(sets[i]));
+      if (!res || res === "pending") { waiting = true; break; }
+      const checks = (t.checks || []).map((c) => ({ label: checkLabel(c), ...evalCheck(c, res.output || "") }));
+      const entry = { name: t.name, status: res.status, error: res.error, line: res.line, output: res.output || "", inputs: sets[i],
+        checks, alt: i, alts: sets.length - 1, pass: res.status === "ok" && checks.every((c) => c.pass) };
+      tried.push(entry);
+      if (entry.pass) break;
+    }
+    const passed = tried.find((e) => e.pass);
+    if (passed) { out.push(passed); continue; }
+    if (waiting) { pending = true; out.push({ name: t.name, status: "pending", checks: [], pass: false, output: "", inputs: sets[0], alt: 0, alts: sets.length - 1 }); continue; }
+    // Nothing passed: show the attempt that got furthest (best status, then most checks), favoring the main inputs.
+    tried.sort((a, b) => STATUS[a.status].rank - STATUS[b.status].rank
+      || b.checks.filter((c) => c.pass).length - a.checks.filter((c) => c.pass).length || a.alt - b.alt);
+    out.push(tried[0]);
+  }
+  const done = out.filter((t) => t.status !== "pending");
+  const w = worst(done.map((t) => t.status));
+  const firstBad = done.find((t) => t.status === w && w !== "ok");
+  return {
+    status: pending && w === "ok" ? "pending" : w, pending,
+    error: firstBad ? firstBad.error : null, line: firstBad ? firstBad.line : null,
+    tests: out, passed: out.filter((t) => t.pass).length, total: out.length
+  };
+}
+function didntRun(s) { return !!(s && s.run && !s.run.pending && STATUS[s.run.status] && STATUS[s.run.status].deduct); }
+function runDeduction(run) {
+  return run && settings.runDeduct && STATUS[run.status] && STATUS[run.status].deduct ? 1 : 0;
+}
+
+/* ---------- editor UI ---------- */
+const PRESET_KEY = "pep8-checker-assignments-v1";
+function loadPresets() {
+  try { return JSON.parse(localStorage.getItem(PRESET_KEY) || "[]"); } catch (e) { return []; }
+}
+function savePresets(list) { try { localStorage.setItem(PRESET_KEY, JSON.stringify(list)); } catch (e) { /* ignore */ } }
+function allPresets() { return [...EXAMPLE_PRESETS, ...loadPresets()]; }
+
+let runChangeTimer;
+function runSettingsChanged(rebuild) {
+  saveSettings();
+  if (rebuild) renderEditor();
+  clearTimeout(runChangeTimer);
+  runChangeTimer = setTimeout(() => { scheduleRuns(); render(); }, 500);
+  render();
+}
+
+function fieldHtml(t, ci, c, f) {
+  const [key, kind, label] = f;
+  const v = c[key] ?? CHECKS[c.type].def[key] ?? "";
+  const data = `data-t="${t}" data-c="${ci}" data-k="${key}"`;
+  if (kind === "bool") return `<label class="check sm"><input type="checkbox" ${data} ${v ? "checked" : ""}> ${label}</label>`;
+  if (kind === "num") return `<label class="cf"><span>${label}</span><input type="number" step="any" ${data} value="${esc(v)}"></label>`;
+  if (kind === "list") return `<label class="cf wide"><span>${label}</span><textarea rows="4" ${data}>${esc(v)}</textarea></label>`;
+  return `<label class="cf grow"><span>${label}</span><input type="text" ${data} value="${esc(v)}"></label>`;
+}
+
+function altsHtml(alts, ti) {
+  const tAttr = ti === "run" ? `data-run="1"` : `data-t="${ti}"`;
+  return `<div class="alts">
+    ${alts.map((a, ai) => `<div class="alt-row">
+      <label class="cf grow"><span>Alternate inputs ${ai + 1}, one per line</span><textarea rows="3" ${tAttr} data-alt="${ai}">${esc(a)}</textarea></label>
+      <button type="button" class="btn quiet" data-act="del-alt" ${tAttr} data-alt="${ai}">Remove</button>
+    </div>`).join("")}
+    <div class="row"><button type="button" class="btn quiet" data-act="add-alt" ${tAttr}>Add alternate inputs</button>
+    ${alts.length ? `<span class="hint">Passes if the main inputs or any alternate set works. Alternates only run when the main inputs don't pass.</span>` : `<span class="hint">For students who read input a different way, like <code>Maria,16</code> on one line.</span>`}</div>
+  </div>`;
+}
+
+function renderEditor() {
+  document.querySelectorAll('input[name="mode"]').forEach((r) => { r.checked = r.value === settings.mode; });
+  $("runOpts").hidden = settings.mode === "pep8";
+  $("runInputsBox").hidden = settings.mode !== "runs";
+  $("testsBox").hidden = settings.mode !== "tests";
+  $("timeout").value = settings.timeout;
+  $("runDeduct").checked = settings.runDeduct;
+  $("rubric").checked = settings.rubric;
+  $("runDeductRow").hidden = settings.rubric;
+  $("runInputs").value = settings.runInputs;
+  $("runAlts").innerHTML = altsHtml(settings.runAlts || [], "run");
+  const sel = $("presetSelect");
+  sel.innerHTML = `<option value="">Saved assignments…</option>` + allPresets().map((p, i) => `<option value="${i}">${esc(p.name)}</option>`).join("");
+  const typeOpts = (cur) => Object.entries(CHECKS).map(([k, d]) => `<option value="${k}" ${k === cur ? "selected" : ""}>${d.label}</option>`).join("");
+  $("testList").innerHTML = settings.tests.length ? settings.tests.map((t, ti) => `
+    <div class="test-card">
+      <div class="row">
+        <label class="cf grow"><span>Test name</span><input type="text" data-t="${ti}" data-tk="name" value="${esc(t.name)}"></label>
+        <button type="button" class="btn quiet" data-act="del-test" data-t="${ti}">Remove test</button>
+      </div>
+      <label class="cf wide"><span>Inputs to type in, one per line</span><textarea rows="4" data-t="${ti}" data-tk="inputs">${esc(t.inputs)}</textarea></label>
+      ${altsHtml(t.alts || [], ti)}
+      <div class="checks-list">
+        ${(t.checks || []).map((c, ci) => `
+          <div class="check-row">
+            <label class="cf"><span>Check</span><select data-t="${ti}" data-c="${ci}" data-k="type">${typeOpts(c.type)}</select></label>
+            ${CHECKS[c.type].fields.map((f) => fieldHtml(ti, ci, c, f)).join("")}
+            <button type="button" class="btn quiet" data-act="del-check" data-t="${ti}" data-c="${ci}" aria-label="Remove check">Remove</button>
+          </div>`).join("")}
+      </div>
+      <div><button type="button" class="btn" data-act="add-check" data-t="${ti}">Add check</button></div>
+    </div>`).join("") : `<p class="hint">No tests yet. Add one, or load the Magic 8-Ball example from Saved assignments to see how tests are built.</p>`;
+}
+
+function bindEditor() {
+  document.querySelectorAll('input[name="mode"]').forEach((r) => r.addEventListener("change", () => {
+    settings.mode = r.value; runSettingsChanged(true);
+  }));
+  $("timeout").addEventListener("change", () => {
+    const v = parseFloat($("timeout").value);
+    if (!isNaN(v) && v > 0) { settings.timeout = v; runSettingsChanged(false); }
+  });
+  $("runDeduct").addEventListener("change", () => { settings.runDeduct = $("runDeduct").checked; saveSettings(); render(); });
+  $("rubric").addEventListener("change", () => { settings.rubric = $("rubric").checked; $("runDeductRow").hidden = settings.rubric; saveSettings(); render(); });
+  $("runInputs").addEventListener("input", () => { settings.runInputs = $("runInputs").value; runSettingsChanged(false); });
+  $("runAlts").addEventListener("click", (e) => {
+    const b = e.target.closest("button[data-act]");
+    if (!b) return;
+    settings.runAlts = settings.runAlts || [];
+    if (b.dataset.act === "add-alt") settings.runAlts.push("");
+    if (b.dataset.act === "del-alt") settings.runAlts.splice(Number(b.dataset.alt), 1);
+    runSettingsChanged(true);
+  });
+  $("runAlts").addEventListener("input", (e) => {
+    const el = e.target;
+    if (el.dataset.alt === undefined) return;
+    settings.runAlts[Number(el.dataset.alt)] = el.value;
+    runSettingsChanged(false);
+  });
+  $("addTest").addEventListener("click", () => {
+    settings.tests.push({ name: `Test ${settings.tests.length + 1}`, inputs: "", alts: [], checks: [{ type: "contains", ...CHECKS.contains.def }] });
+    runSettingsChanged(true);
+  });
+
+  const list = $("testList");
+  list.addEventListener("click", (e) => {
+    const b = e.target.closest("button[data-act]");
+    if (!b) return;
+    const t = Number(b.dataset.t), c = Number(b.dataset.c);
+    if (b.dataset.act === "del-test") settings.tests.splice(t, 1);
+    if (b.dataset.act === "add-check") settings.tests[t].checks.push({ type: "contains", ...CHECKS.contains.def });
+    if (b.dataset.act === "del-check") settings.tests[t].checks.splice(c, 1);
+    if (b.dataset.act === "add-alt") (settings.tests[t].alts = settings.tests[t].alts || []).push("");
+    if (b.dataset.act === "del-alt") settings.tests[t].alts.splice(Number(b.dataset.alt), 1);
+    runSettingsChanged(true);
+  });
+  const onField = (e) => {
+    const el = e.target;
+    if (el.dataset.t === undefined) return;
+    const t = settings.tests[Number(el.dataset.t)];
+    if (!t) return;
+    if (el.dataset.tk) { t[el.dataset.tk] = el.value; runSettingsChanged(false); return; }
+    if (el.dataset.alt !== undefined) { t.alts[Number(el.dataset.alt)] = el.value; runSettingsChanged(false); return; }
+    const c = t.checks[Number(el.dataset.c)];
+    const k = el.dataset.k;
+    if (k === "type") {
+      if (e.type !== "change") return;
+      t.checks[Number(el.dataset.c)] = { type: el.value, ...CHECKS[el.value].def };
+      runSettingsChanged(true);
+      return;
+    }
+    if (el.type === "checkbox") c[k] = el.checked;
+    else if (el.type === "number") { const v = parseFloat(el.value); c[k] = isNaN(v) ? 0 : v; }
+    else c[k] = el.value;
+    runSettingsChanged(false);
+  };
+  list.addEventListener("input", onField);
+  list.addEventListener("change", onField);
+
+  $("presetLoad").addEventListener("click", () => {
+    const i = $("presetSelect").value;
+    if (i === "") { toast("Choose a saved assignment first."); return; }
+    const p = structuredClone(allPresets()[Number(i)]);
+    settings.mode = p.mode || "tests";
+    settings.timeout = p.timeout || settings.timeout;
+    settings.runInputs = p.runInputs || "";
+    settings.runAlts = p.runAlts || [];
+    settings.tests = p.tests || [];
+    runSettingsChanged(true);
+    toast(`Loaded "${p.name}"`);
+  });
+  $("presetSave").addEventListener("click", () => {
+    const name = (prompt("Name this assignment (for example, Unit 3 Receipt):") || "").trim();
+    if (!name) return;
+    const list = loadPresets().filter((p) => p.name !== name);
+    list.push({ name, mode: settings.mode, timeout: settings.timeout, runInputs: settings.runInputs, runAlts: settings.runAlts || [], tests: structuredClone(settings.tests) });
+    savePresets(list);
+    renderEditor();
+    toast(`Saved "${name}"`);
+  });
+  $("presetDelete").addEventListener("click", () => {
+    const i = $("presetSelect").value;
+    if (i === "") { toast("Choose a saved assignment first."); return; }
+    const p = allPresets()[Number(i)];
+    if (p.builtIn) { toast("The example can't be deleted."); return; }
+    if (!confirm(`Delete "${p.name}"?`)) return;
+    savePresets(loadPresets().filter((x) => x.name !== p.name));
+    renderEditor();
+  });
+  $("presetExport").addEventListener("click", () => {
+    const name = (prompt("File name for this assignment's tests:", "assignment-tests") || "").trim();
+    if (!name) return;
+    const data = { name, mode: settings.mode, timeout: settings.timeout, runInputs: settings.runInputs, runAlts: settings.runAlts || [], tests: settings.tests };
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }));
+    a.download = name.replace(/[^\w\- ]+/g, "").replace(/\s+/g, "-") + ".json";
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  });
+  $("presetImport").addEventListener("click", () => $("presetFile").click());
+  $("presetFile").addEventListener("change", async (e) => {
+    const f = e.target.files[0];
+    e.target.value = "";
+    if (!f) return;
+    try {
+      const p = JSON.parse(await f.text());
+      if (!Array.isArray(p.tests)) throw new Error("no tests");
+      const name = p.name || f.name.replace(/\.json$/i, "");
+      settings.mode = ["pep8", "runs", "tests"].includes(p.mode) ? p.mode : "tests";
+      settings.timeout = p.timeout || settings.timeout;
+      settings.runInputs = p.runInputs || "";
+      settings.runAlts = Array.isArray(p.runAlts) ? p.runAlts.map(String) : [];
+      settings.tests = p.tests.filter((t) => t && typeof t === "object").map((t) => ({
+        name: String(t.name || "Test"), inputs: String(t.inputs || ""), alts: Array.isArray(t.alts) ? t.alts.map(String) : [],
+        checks: (t.checks || []).filter((c) => c && CHECKS[c.type]).map((c) => ({ ...CHECKS[c.type].def, ...c }))
+      }));
+      const list = loadPresets().filter((x) => x.name !== name);
+      list.push({ name, mode: settings.mode, timeout: settings.timeout, runInputs: settings.runInputs, runAlts: settings.runAlts, tests: structuredClone(settings.tests) });
+      savePresets(list);
+      runSettingsChanged(true);
+      toast(`Imported "${name}"`);
+    } catch (err) {
+      toast("That file isn't a saved assignment from this checker.");
+    }
+  });
+}
+/* =====================  OVERRIDES  ===================== */
+const OVERRIDE_KEY = "pep8-checker-overrides-v1";
+let overrides = (() => { try { return JSON.parse(localStorage.getItem(OVERRIDE_KEY) || "{}"); } catch (e) { return {}; } })();
+function saveOverrides() { try { localStorage.setItem(OVERRIDE_KEY, JSON.stringify(overrides)); } catch (e) { /* ignore */ } }
+function hashStr(str) {
+  let h = 5381;
+  for (let i = 0; i < str.length; i++) h = ((h << 5) + h + str.charCodeAt(i)) | 0;
+  return (h >>> 0).toString(36);
+}
+// Same student + file + code = same key, so re-adding the same zip keeps your overrides.
+// Keyed by Canvas ID when there is one, so renaming students with a roster keeps overrides.
+function overrideKey(rec) {
+  return rec.okey || (rec.okey = `${rec.canvasId ? "id:" + rec.canvasId : rec.student}|${rec.file}|${hashStr(rec.source)}`);
+}
+function getOverride(rec) {
+  const k = overrideKey(rec);
+  if (!overrides[k] && rec.canvasId) { // move overrides saved before roster support
+    const old = `${rec.squashed ? titleCase(rec.squashed) : rec.student}|${rec.file}|${hashStr(rec.source)}`;
+    if (overrides[old]) { overrides[k] = overrides[old]; delete overrides[old]; saveOverrides(); }
+  }
+  return overrides[k] || null;
+}
+function setOverride(rec, patch) {
+  const k = overrideKey(rec);
+  const cur = { score: null, note: "", ...(overrides[k] || {}), ...patch };
+  if (cur.score == null && !cur.note) delete overrides[k]; else overrides[k] = cur;
+  saveOverrides();
+}
+
+function overrideHtml(rec, s) {
+  const o = getOverride(rec) || {};
+  const opts = [5, 4, 3, 2, 1].map((n) => `<option value="${n}" ${o.score === n ? "selected" : ""}>${n}</option>`).join("");
+  return `<div class="override">
+    <label class="cf"><span>Final score</span>
+      <select id="ovScore"><option value="">Calculated (${s.calculated})</option>${opts}</select></label>
+    <label class="cf grow"><span>Note to student (shows on their report and copied feedback)</span>
+      <textarea id="ovNote" rows="2" placeholder="Optional">${esc(o.note || "")}</textarea></label>
+  </div>`;
+}
+function bindOverride(rec) {
+  $("ovScore").addEventListener("change", () => {
+    const v = $("ovScore").value;
+    setOverride(rec, { score: v === "" ? null : Number(v) });
+    render(); renderDetail(false);
+  });
+  $("ovNote").addEventListener("input", () => { setOverride(rec, { note: $("ovNote").value }); });
+}
+
+/* =====================  STUDENT PDF REPORTS  ===================== */
+// Built directly with pdf-lib: real text (selectable, small files), no screenshots.
+const PDFLIB_URL = "https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js";
+let pdfLibLoading = null;
+function loadPdfLib() {
+  if (window.PDFLib) return Promise.resolve();
+  if (!pdfLibLoading) {
+    pdfLibLoading = new Promise((res, rej) => {
+      const sc = document.createElement("script");
+      sc.src = PDFLIB_URL; sc.onload = res; sc.onerror = () => { pdfLibLoading = null; rej(new Error("load failed")); };
+      document.head.appendChild(sc);
+    });
+  }
+  return pdfLibLoading;
+}
+
+// Standard PDF fonts only cover Western characters; swap anything else.
+function pdfClean(s) {
+  return String(s ?? "")
+    .replace(/\t/g, "    ")
+    .replace(/[\u2212\u2010\u2011]/g, "-")
+    .replace(/[\u2713\u2714]/g, "v").replace(/[\u2717\u2718]/g, "x")
+    .replace(/[\p{Extended_Pictographic}\uFE0F\u200D]/gu, "")
+    .replace(/[^\n\x20-\x7E\xA0-\xFF\u2013\u2014\u2018\u2019\u201C\u201D\u2026\u2022\u20AC]/gu, "?");
+}
+
+const PDF_C = {
+  ink: [0.11, 0.153, 0.251], muted: [0.357, 0.4, 0.502], faint: [0.54, 0.576, 0.66],
+  line: [0.84, 0.863, 0.902], soft: [0.91, 0.925, 0.949], paper: [0.945, 0.957, 0.973],
+  hdr: [0.933, 0.945, 0.969], hit: [1, 0.898, 0.498], pen: [0.761, 0.231, 0.165],
+  good: [0.184, 0.478, 0.341], mid: [0.541, 0.416, 0], blue: [0.184, 0.357, 0.827], noteBg: [0.933, 0.949, 0.984]
+};
+
+class PdfWriter {
+  constructor(doc, fonts, footer, size = [612, 792], margin = 50) {
+    this.doc = doc; this.f = fonts; this.footer = footer;
+    this.W = size[0]; this.H = size[1]; this.M = margin; this.pages = [];
+    this.onNewPage = null;
+    this.newPage();
+  }
+  rgb(c) { return PDFLib.rgb(c[0], c[1], c[2]); }
+  get cw() { return this.W - 2 * this.M; }
+  newPage() {
+    this.page = this.doc.addPage([this.W, this.H]); this.pages.push(this.page); this.y = this.H - this.M;
+    if (this.onNewPage) this.onNewPage();
+  }
+  ensure(h) { if (this.y - h < this.M + 18) this.newPage(); }
+  gap(h) { this.y -= h; }
+  text(str, x, baseline, font, size, color) {
+    if (!str) return;
+    this.page.drawText(str, { x, y: baseline, size, font, color: this.rgb(color) });
+  }
+  wrap(str, font, size, maxW) {
+    const out = [];
+    for (const para of pdfClean(str).split("\n")) {
+      const words = para.split(" ");
+      let line = "";
+      for (let w of words) {
+        while (font.widthOfTextAtSize(w, size) > maxW) { // break very long words
+          let k = w.length;
+          while (k > 1 && font.widthOfTextAtSize(w.slice(0, k), size) > maxW) k--;
+          if (line) { out.push(line); line = ""; }
+          out.push(w.slice(0, k)); w = w.slice(k);
+        }
+        const tryLine = line ? line + " " + w : w;
+        if (font.widthOfTextAtSize(tryLine, size) <= maxW) line = tryLine;
+        else { out.push(line); line = w; }
+      }
+      out.push(line);
+    }
+    return out;
+  }
+  wrapMono(str, size, maxW) {
+    const per = Math.max(10, Math.floor(maxW / (size * 0.6)));
+    const s = pdfClean(str);
+    if (!s.length) return [""];
+    const out = [];
+    for (let i = 0; i < s.length; i += per) out.push(s.slice(i, i + per));
+    return out;
+  }
+  para(str, o = {}) {
+    const font = o.font || this.f.reg, size = o.size || 10.5, color = o.color || PDF_C.ink, x = this.M + (o.indent || 0);
+    const lh = size * 1.4;
+    for (const ln of this.wrap(str, font, size, (o.width || this.cw) - (o.indent || 0))) {
+      this.ensure(lh);
+      this.text(ln, x, this.y - size, font, size, color);
+      this.y -= lh;
+    }
+  }
+  heading(str) { this.ensure(72); this.gap(14); this.para(str, { font: this.f.bold, size: 14 }); this.gap(4); }
+  mark(pass, x, baseline) {
+    const p = this.page, c = this.rgb(pass ? PDF_C.good : PDF_C.pen);
+    if (pass) {
+      p.drawLine({ start: { x, y: baseline + 3.5 }, end: { x: x + 2.8, y: baseline + 0.5 }, thickness: 1.4, color: c });
+      p.drawLine({ start: { x: x + 2.8, y: baseline + 0.5 }, end: { x: x + 7.5, y: baseline + 7.5 }, thickness: 1.4, color: c });
+    } else {
+      p.drawLine({ start: { x: x + 0.5, y: baseline }, end: { x: x + 6.5, y: baseline + 7 }, thickness: 1.4, color: c });
+      p.drawLine({ start: { x: x + 0.5, y: baseline + 7 }, end: { x: x + 6.5, y: baseline }, thickness: 1.4, color: c });
+    }
+  }
+  monoBlock(lines, o = {}) { // lines: [{text, bg, num, tag}]
+    const size = o.size || 8.5, lh = size * 1.45, f = this.f.mono;
+    const numW = o.numbers ? 26 : 0, tagW = o.tags ? 44 : 0, pad = 8;
+    const textX = this.M + pad + numW + (numW ? 8 : 0);
+    const maxW = this.cw - pad * 2 - numW - (numW ? 8 : 0) - tagW;
+    this.ensure(lh + 6);
+    for (const ln of lines) {
+      const parts = this.wrapMono(ln.text, size, maxW);
+      parts.forEach((part, i) => {
+        if (this.y - lh < this.M + 18) this.newPage();
+        const bg = ln.bg || o.bg;
+        if (bg) this.page.drawRectangle({ x: this.M, y: this.y - lh, width: this.cw, height: lh, color: this.rgb(bg) });
+        const base = this.y - lh + (lh - size) / 2 + 1.5;
+        if (numW && i === 0 && ln.num != null) {
+          const s = String(ln.num);
+          this.text(s, this.M + pad + numW - this.f.mono.widthOfTextAtSize(s, size), base, this.f.mono, size, PDF_C.faint);
+        }
+        this.text(part, textX, base, f, size, ln.color || PDF_C.ink);
+        if (tagW && i === 0 && ln.tag) {
+          const t = pdfClean(ln.tag), ts = size - 1.5;
+          this.text(t, this.M + this.cw - pad - this.f.mono.widthOfTextAtSize(t, ts), base, this.f.mono, ts, PDF_C.pen);
+        }
+        this.y -= lh;
+      });
+    }
+  }
+  finish() {
+    const n = this.pages.length;
+    this.pages.forEach((p, i) => {
+      const t = pdfClean(`${this.footer}   Page ${i + 1} of ${n}`);
+      p.drawText(t, { x: this.M, y: 28, size: 8, font: this.f.reg, color: this.rgb(PDF_C.faint) });
+    });
+  }
+}
+
+async function buildPdf(rec, s) {
+  const { PDFDocument, StandardFonts, degrees } = PDFLib;
+  const doc = await PDFDocument.create();
+  const fonts = {
+    reg: await doc.embedFont(StandardFonts.Helvetica), bold: await doc.embedFont(StandardFonts.HelveticaBold),
+    mono: await doc.embedFont(StandardFonts.Courier)
+  };
+  const o = getOverride(rec);
+  const title = (settings.reportTitle || "").trim() || "PEP 8 style report";
+  const date = new Date().toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" });
+  doc.setTitle(pdfClean(`${rec.student}: ${title}`));
+  const w = new PdfWriter(doc, fonts, `${rec.student}  |  ${title}`);
+  const M = w.M;
+
+  // header with the circled score
+  const top = w.y;
+  const sc = s.final >= 4 ? PDF_C.good : s.final === 3 ? PDF_C.mid : PDF_C.pen;
+  w.page.drawEllipse({ x: M + 38, y: top - 40, xScale: 36, yScale: 33, borderColor: w.rgb(sc), borderWidth: 2.5, rotate: degrees(-6) });
+  const num = String(s.final);
+  w.text(num, M + 38 - fonts.bold.widthOfTextAtSize(num, 32) / 2, top - 46, fonts.bold, 32, sc);
+  w.text("out of 5", M + 38 - fonts.reg.widthOfTextAtSize("out of 5", 7.5) / 2, top - 59, fonts.reg, 7.5, sc);
+  const tx = M + 100;
+  w.text(pdfClean(title), tx, top - 12, fonts.bold, 10, PDF_C.muted);
+  w.text(pdfClean(rec.student), tx, top - 38, fonts.bold, 22, PDF_C.ink);
+  w.text(pdfClean(rec.file), tx, top - 56, fonts.reg, 10, PDF_C.muted);
+  w.text(pdfClean(date), tx, top - 70, fonts.reg, 10, PDF_C.muted);
+  w.y = top - 88;
+  w.page.drawLine({ start: { x: M, y: w.y }, end: { x: M + w.cw, y: w.y }, thickness: 1.5, color: w.rgb(PDF_C.ink) });
+  w.gap(12);
+
+  // breakdown
+  const minus = { font: fonts.bold, color: PDF_C.pen };
+  if (s.rubric) {
+    w.para(`Program & Output ${s.rubric.output}   |   Style ${s.band}   |   Submission ${s.rubric.submission}`, { font: fonts.bold, size: 11.5 });
+    w.para(`How the score is figured: ${s.steps.join("; ")}.`, { size: 9.5, color: PDF_C.muted });
+    w.gap(4);
+  }
+  w.para(`Style band ${s.band}: ${s.unique} type${s.unique === 1 ? "" : "s"} of mistake, ${s.total} in total`);
+  w.para(s.hasHeader ? "Header block found" : `No header block found${s.deduct ? ": -1 point" : ""}`, s.hasHeader ? {} : minus);
+  if (s.run && !s.run.pending) {
+    if (s.run.status === "ok") w.para("Program runs");
+    else w.para(`Program ${STATUS[s.run.status].label.toLowerCase()}${s.runDeduct ? ": -1 point" : ""}`, s.runDeduct ? minus : {});
+    if (settings.mode === "tests") w.para(`Tests passed: ${s.run.passed} of ${s.run.total}`);
+  }
+  if (s.tc.on) w.para(`${testCaseText(s.tc)}${s.tc.deduct ? `: fewer than ${s.tc.need}, -1 point` : ""}`, s.tc.deduct ? minus : {});
+  if (s.overridden) w.para("Score adjusted by your teacher");
+
+  // teacher note
+  if (o && o.note) {
+    const lines = w.wrap(o.note, fonts.reg, 10.5, w.cw - 28);
+    const h = 16 + 14 + lines.length * 14.5 + 6;
+    w.gap(10); w.ensure(h);
+    w.page.drawRectangle({ x: M, y: w.y - h, width: w.cw, height: h, color: w.rgb(PDF_C.noteBg) });
+    w.page.drawRectangle({ x: M, y: w.y - h, width: 4, height: h, color: w.rgb(PDF_C.blue) });
+    w.text("Note from your teacher", M + 14, w.y - 20, fonts.bold, 10.5, PDF_C.ink);
+    let yy = w.y - 36;
+    for (const ln of lines) { w.text(ln, M + 14, yy, fonts.reg, 10.5, PDF_C.ink); yy -= 14.5; }
+    w.y -= h;
+  }
+
+  // style mistakes table
+  w.heading("Style mistakes");
+  if (!s.groups.length) w.para("No PEP 8 mistakes found. Nice work!", { font: fonts.bold, color: PDF_C.good });
+  else {
+    const c1 = 300, c2 = 50, c3 = w.cw - c1 - c2 - 20;
+    w.ensure(30);
+    w.text("Mistake", M, w.y - 9, fonts.bold, 8.5, PDF_C.muted);
+    w.text("Times", M + c1 + 10, w.y - 9, fonts.bold, 8.5, PDF_C.muted);
+    w.text("Lines", M + c1 + c2 + 20, w.y - 9, fonts.bold, 8.5, PDF_C.muted);
+    w.gap(14);
+    w.page.drawLine({ start: { x: M, y: w.y }, end: { x: M + w.cw, y: w.y }, thickness: 0.75, color: w.rgb(PDF_C.line) });
+    for (const g of s.groups) {
+      const msg = w.wrap(g.msg, fonts.reg, 10.5, c1);
+      const lines = w.wrap(lineList(g.occ), fonts.mono, 8.5, c3);
+      const h = Math.max(msg.length * 14 + 13, lines.length * 11) + 12;
+      w.ensure(h);
+      let yy = w.y - 16;
+      for (const ln of msg) { w.text(ln, M, yy, fonts.reg, 10.5, PDF_C.ink); yy -= 14; }
+      w.text(pdfClean(`${g.code}, ${catName(g.cat)}`), M, yy + 1, fonts.mono, 8, PDF_C.muted);
+      const times = `x${g.occ.length}`;
+      w.text(times, M + c1 + 10 + c2 - fonts.bold.widthOfTextAtSize(times, 11), w.y - 16, fonts.bold, 11, PDF_C.pen);
+      let ly = w.y - 15;
+      for (const ln of lines) { w.text(ln, M + c1 + c2 + 20, ly, fonts.mono, 8.5, PDF_C.muted); ly -= 11; }
+      w.y -= h;
+      w.page.drawLine({ start: { x: M, y: w.y }, end: { x: M + w.cw, y: w.y }, thickness: 0.5, color: w.rgb(PDF_C.soft) });
+    }
+    w.gap(6);
+    w.para("Each type of mistake counts once toward your score, no matter how many times it happens.", { size: 9, color: PDF_C.muted });
+  }
+
+  // running / tests
+  if (s.run && !s.run.pending) {
+    const block = (t) => {
+      const st = STATUS[t.status];
+      if (t.status !== "ok") w.para(`${st.label}${t.error ? `: ${t.error}` : ""}${t.line ? ` (line ${t.line})` : ""}`, st.deduct ? minus : { color: PDF_C.muted });
+      for (const c of t.checks || []) {
+        const lines = w.wrap(c.label, fonts.reg, 10, w.cw - 16);
+        w.ensure(lines.length * 14 + (c.pass ? 0 : 13));
+        w.mark(c.pass, M, w.y - 10);
+        for (const ln of lines) { w.text(ln, M + 14, w.y - 10, fonts.reg, 10, PDF_C.ink); w.y -= 14; }
+        if (!c.pass) w.para(c.detail, { indent: 14, size: 9, color: PDF_C.muted });
+      }
+      if (t.status !== "syntax") {
+        w.gap(4);
+        const outLines = (t.output || "(no output)").replace(/\n$/, "").split("\n");
+        w.monoBlock([{ text: "", bg: PDF_C.paper }, ...outLines.map((x) => ({ text: x })), { text: "", bg: PDF_C.paper }], { bg: PDF_C.paper, size: 8 });
+      }
+    };
+    if (settings.mode === "runs") { w.heading("Running your program"); block(s.run.tests[0]); }
+    else {
+      w.heading("Tests");
+      for (const t of s.run.tests) {
+        w.ensure(40); w.gap(4);
+        w.mark(t.pass, M, w.y - 11);
+        w.text(pdfClean(t.name), M + 14, w.y - 11, fonts.bold, 11.5, PDF_C.ink);
+        w.gap(18);
+        block(t);
+        w.gap(8);
+      }
+    }
+  }
+
+  // code listing
+  w.heading("Your code");
+  w.para(s.hasHeader ? "Shaded lines are your header, which isn't graded for style. Highlighted lines have a style mistake."
+    : "Highlighted lines have a style mistake.", { size: 9, color: PDF_C.muted });
+  w.gap(4);
+  const tags = new Map();
+  for (const g of s.groups) for (const oc of g.occ) {
+    if (!tags.has(oc.line)) tags.set(oc.line, new Set());
+    tags.get(oc.line).add(g.code);
+  }
+  const src = rec.source.replace(/\r\n?/g, "\n").split("\n");
+  if (src.length && src[src.length - 1] === "") src.pop();
+  w.monoBlock(src.map((text, i) => {
+    const n = i + 1, hit = tags.get(n), hdr = s.hasHeader && n <= s.headerEnd;
+    return { text, num: n, tag: hit ? [...hit].join(" ") : "", bg: hit ? PDF_C.hit : hdr ? PDF_C.hdr : null, color: hdr && !hit ? PDF_C.muted : PDF_C.ink };
+  }), { numbers: true, tags: true, size: 8.5 });
+
+  w.finish();
+  return new Blob([await doc.save()], { type: "application/pdf" });
+}
+
+function pdfName(rec) {
+  return `${rec.student}-${rec.file.replace(/\.py$/i, "")}`.replace(/[^\w\- ]+/g, "").replace(/\s+/g, "-") + ".pdf";
+}
+function saveBlob(blob, name) {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+
+async function downloadOnePdf(rec) {
+  const s = score(rec);
+  if (!s) return;
+  if (s.run && s.run.pending) { toast("Still running this program. Try again in a moment."); return; }
+  try {
+    await loadPdfLib();
+    saveBlob(await buildPdf(rec, s), pdfName(rec));
+  } catch (e) { console.error(e); toast("Couldn't make the PDF. Check your internet connection and try again."); }
+}
+
+let pdfBusy = false;
+async function downloadAllPdfs() {
+  if (pdfBusy) return;
+  const ready = results.filter(inPeriod).map((r) => ({ r, s: score(r) })).filter((x) => x.s);
+  if (!ready.length) return;
+  if (ready.some((x) => x.s.run && x.s.run.pending) && !confirm("Some programs are still running. Make PDFs anyway? Unfinished results will be left out of those reports.")) return;
+  pdfBusy = true;
+  const btn = $("pdfAll"); btn.disabled = true;
+  try {
+    await loadPdfLib();
+    const zip = new JSZip();
+    const used = new Set();
+    let i = 0;
+    for (const { r, s } of ready.sort((a, b) => a.r.student.localeCompare(b.r.student))) {
+      $("progress").textContent = `Making student PDFs: ${++i} of ${ready.length}…`;
+      let name = pdfName(r), k = 2;
+      while (used.has(name)) name = pdfName(r).replace(/\.pdf$/, `-${k++}.pdf`);
+      used.add(name);
+      zip.file(name, await buildPdf(r, s));
+      await new Promise((res) => setTimeout(res, 0));
+    }
+    const title = (settings.reportTitle || "pep8-reports").trim().replace(/[^\w\- ]+/g, "").replace(/\s+/g, "-") || "pep8-reports";
+    saveBlob(await zip.generateAsync({ type: "blob" }), `${title}${periodSlug()}-student-reports.zip`);
+    $("progress").textContent = `Made ${ready.length} student PDF${ready.length === 1 ? "" : "s"}.`;
+  } catch (e) {
+    console.error(e);
+    toast("Couldn't make the PDFs. Check your internet connection and try again.");
+    $("progress").textContent = "";
+  } finally { pdfBusy = false; btn.disabled = false; }
+}
+
+
+/* =====================  CLASS SUMMARY PDF (teacher)  ===================== */
+function summaryRows() {
+  const rows = results.filter(inPeriod).map((r) => ({ r, s: score(r) })).filter((x) => x.s)
+    .concat(missingPython().filter(inPeriod).map((m) => ({ r: m, s: null })));
+  rows.sort((a, b) => {
+    const va = sortValue(a.r, a.s), vb = sortValue(b.r, b.s);
+    if (va < vb) return -sortDir;
+    if (va > vb) return sortDir;
+    return (a.r.id || 0) - (b.r.id || 0);
+  });
+  return rows;
+}
+
+async function buildSummaryPdf() {
+  const { PDFDocument, StandardFonts } = PDFLib;
+  const doc = await PDFDocument.create();
+  const fonts = {
+    reg: await doc.embedFont(StandardFonts.Helvetica), bold: await doc.embedFont(StandardFonts.HelveticaBold),
+    mono: await doc.embedFont(StandardFonts.Courier)
+  };
+  const title = (settings.reportTitle || "").trim() || "PEP 8 check";
+  const periodLabel = !periodFilter ? (anyPeriods() ? "All periods" : "") : periodFilter === "__none" ? "Students not on the roster" : periodFilter;
+  const date = new Date().toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" });
+  doc.setTitle(pdfClean(`Class summary: ${title}${periodLabel ? `, ${periodLabel}` : ""}`));
+  const w = new PdfWriter(doc, fonts, `Class summary  |  ${title}${periodLabel ? `  |  ${periodLabel}` : ""}`, [792, 612], 40);
+  const M = w.M, C = PDF_C;
+  const rows = summaryRows();
+  const scored = rows.filter((x) => x.s);
+  const missing = rows.filter((x) => !x.s);
+
+  // ---- title block
+  w.text(pdfClean(title), M, w.y - 20, fonts.bold, 20, C.ink);
+  w.text(pdfClean(`Class summary${periodLabel ? `, ${periodLabel}` : ""}`), M, w.y - 38, fonts.bold, 11, C.muted);
+  const dw = fonts.reg.widthOfTextAtSize(date, 10);
+  w.text(pdfClean(date), M + w.cw - dw, w.y - 20, fonts.reg, 10, C.muted);
+  const modeText = settings.mode === "pep8" ? "PEP 8 only" : settings.mode === "runs" ? "PEP 8 + runs" : "PEP 8 + runs + tests";
+  const mw = fonts.reg.widthOfTextAtSize(modeText, 10);
+  w.text(modeText, M + w.cw - mw, w.y - 38, fonts.reg, 10, C.muted);
+  w.y -= 50;
+  w.page.drawLine({ start: { x: M, y: w.y }, end: { x: M + w.cw, y: w.y }, thickness: 1.5, color: w.rgb(C.ink) });
+  w.y -= 16;
+
+  // ---- three summary panels
+  const top = w.y, colW = (w.cw - 40) / 3;
+  const panelTitle = (t, x) => w.text(t, x, top - 10, fonts.bold, 10.5, C.ink);
+  // 1) score distribution
+  let x0 = M;
+  panelTitle("Final scores", x0);
+  const counts = [5, 4, 3, 2, 1].map((n) => scored.filter((x) => x.s.final === n).length);
+  const maxC = Math.max(1, ...counts);
+  const avg = scored.length ? scored.reduce((t, x) => t + x.s.final, 0) / scored.length : 0;
+  [5, 4, 3, 2, 1].forEach((n, i) => {
+    const yy = top - 30 - i * 15;
+    const col = n >= 4 ? C.good : n === 3 ? C.mid : C.pen;
+    w.text(String(n), x0, yy, fonts.bold, 10, col);
+    const bw = (colW - 60) * (counts[i] / maxC);
+    if (counts[i]) w.page.drawRectangle({ x: x0 + 14, y: yy - 1.5, width: Math.max(bw, 2), height: 9, color: w.rgb(col), opacity: 0.85 });
+    w.text(String(counts[i]), x0 + 20 + Math.max(bw, 2), yy, fonts.reg, 9.5, C.ink);
+  });
+  w.text(pdfClean(`${scored.length} file${scored.length === 1 ? "" : "s"} checked, average ${avg.toFixed(1)}`), x0, top - 112, fonts.reg, 9.5, C.muted);
+
+  // 2) needs attention
+  x0 = M + colW + 20;
+  panelTitle("Needs attention", x0);
+  const att = [
+    ["No Python file", missing.length],
+    ["Missing header", scored.filter((x) => !x.s.hasHeader).length],
+    ...(settings.tcCheck ? [[`Fewer than ${Math.min(TC_MAX, Math.max(1, Number(settings.tcMin) || 1))} test cases`, scored.filter((x) => !x.s.tc.ok).length]] : []),
+    ...(settings.mode !== "pep8" ? [["Didn't run (crash, timeout, syntax)", scored.filter((x) => didntRun(x.s)).length]] : []),
+    ...(settings.mode === "tests" ? [["Failed at least one test", scored.filter((x) => x.s.run && !x.s.run.pending && x.s.run.passed < x.s.run.total).length]] : []),
+    ["Short sample", scored.filter((x) => x.s.short).length],
+    ["Late", rows.filter((x) => x.r.late).length],
+    ["Score adjusted by you", scored.filter((x) => x.s.overridden).length]
+  ];
+  att.forEach(([label, n], i) => {
+    const yy = top - 30 - i * 13.5;
+    w.text(pdfClean(label), x0, yy, fonts.reg, 9.5, C.ink);
+    const t = String(n), tw = fonts.bold.widthOfTextAtSize(t, 9.5);
+    w.text(t, x0 + colW - tw, yy, fonts.bold, 9.5, n ? C.pen : C.faint);
+  });
+
+  // 3) most common mistakes across students
+  x0 = M + 2 * (colW + 20);
+  panelTitle("Most common mistakes", x0);
+  const byCode = new Map();
+  for (const { s } of scored) for (const g of s.groups) {
+    if (!byCode.has(g.code)) byCode.set(g.code, { code: g.code, msg: g.msg, students: 0, times: 0 });
+    const e = byCode.get(g.code); e.students++; e.times += g.occ.length;
+  }
+  const common = [...byCode.values()].sort((a, b) => b.students - a.students || b.times - a.times).slice(0, 6);
+  if (!common.length) w.text("No PEP 8 mistakes found.", x0, top - 30, fonts.reg, 9.5, C.good);
+  common.forEach((e, i) => {
+    const yy = top - 30 - i * 13.5;
+    const right = `${e.students} student${e.students === 1 ? "" : "s"}`;
+    const rw = fonts.bold.widthOfTextAtSize(right, 9);
+    let msg = pdfClean(`${e.code} ${e.msg}`);
+    while (msg.length > 4 && fonts.reg.widthOfTextAtSize(msg, 9) > colW - rw - 8) msg = msg.slice(0, -2);
+    if (msg !== pdfClean(`${e.code} ${e.msg}`)) msg = msg.replace(/\s*\S?$/, "") + "…";
+    w.text(msg, x0, yy, fonts.reg, 9, C.ink);
+    w.text(right, x0 + colW - rw, yy, fonts.bold, 9, C.muted);
+  });
+  w.y = top - 128;
+
+  // ---- table
+  const showPer = anyPeriods(), runs = settings.mode !== "pep8", tests = settings.mode === "tests";
+  const cols = [
+    { k: "student", label: "Student", w: 150 },
+    ...(showPer ? [{ k: "per", label: "Per", w: 26, al: "c" }] : []),
+    { k: "loc", label: "Lines", w: 34, al: "r" },
+    { k: "types", label: "Types", w: 34, al: "r" },
+    { k: "errors", label: "Errors", w: 38, al: "r" },
+    { k: "band", label: "Band", w: 32, al: "r" },
+    { k: "hdr", label: "Hdr", w: 28, al: "c" },
+    ...(runs ? [{ k: "runs", label: "Runs", w: 66 }] : []),
+    ...(tests ? [{ k: "tests", label: "Tests", w: 36, al: "r" }] : []),
+    ...(rubricOn() ? [{ k: "out", label: "Output", w: 40, al: "c" }, { k: "sub", label: "Sub", w: 28, al: "c" }] : []),
+    { k: "final", label: "Final", w: 36, al: "c" },
+    { k: "top", label: "Top issue", w: 70 },
+    { k: "flags", label: "Flags / note", w: 0 }
+  ];
+  const fixed = cols.reduce((t, c) => t + c.w, 0);
+  cols[cols.length - 1].w = w.cw - fixed;
+  let cx = M;
+  for (const c of cols) { c.x = cx; cx += c.w; }
+  const PAD = 4;
+  const drawHead = () => {
+    w.page.drawRectangle({ x: M, y: w.y - 18, width: w.cw, height: 18, color: w.rgb(C.hdr) });
+    for (const c of cols) {
+      const tw = fonts.bold.widthOfTextAtSize(c.label, 8.5);
+      const tx = c.al === "r" ? c.x + c.w - PAD - tw : c.al === "c" ? c.x + (c.w - tw) / 2 : c.x + PAD;
+      w.text(c.label, tx, w.y - 12.5, fonts.bold, 8.5, C.muted);
+    }
+    w.y -= 18;
+  };
+  w.ensure(60);
+  drawHead();
+  w.onNewPage = () => { w.y -= 4; drawHead(); };
+
+  const cell = (c, text, yy, o = {}) => {
+    const font = o.font || fonts.reg, size = o.size || 9, color = o.color || C.ink;
+    const t = pdfClean(text);
+    const tw = font.widthOfTextAtSize(t, size);
+    const tx = c.al === "r" ? c.x + c.w - PAD - tw : c.al === "c" ? c.x + (c.w - tw) / 2 : c.x + PAD;
+    w.text(t, tx, yy, font, size, color);
+  };
+  const colOf = (k) => cols.find((c) => c.k === k);
+  rows.forEach(({ r, s }, idx) => {
+    // build flags/note text first to know the row height
+    let flagText = "";
+    if (s) {
+      const f = [];
+      if (s.syntax) f.push("Syntax error");
+      if (s.run && s.run.status === "needs_input") f.push("Needs more input");
+      if (s.run && s.run.status === "unsupported") f.push("Graphics");
+      if (s.short) f.push("Short sample");
+      if (s.tc.on && !s.tc.ok) f.push(`Test cases ${s.tc.count}/${s.tc.need}${s.tc.deduct ? " -1" : ""}`);
+      if (r.late) f.push("Late");
+      if (s.overridden) f.push(`Adjusted (calculated ${s.calculated})`);
+      if (s.note) f.push(`Note: ${s.note}`);
+      flagText = f.join(", ");
+    } else {
+      flagText = `No Python file. Submitted ${kindSummary(r.files)}${r.late ? ". Late" : ""}`;
+    }
+    const fc = colOf("flags");
+    const flagLines = flagText ? w.wrap(flagText, fonts.reg, 8, fc.w - PAD * 2) : [];
+    const nameLines = w.wrap(r.student, fonts.bold, 9.5, colOf("student").w - PAD * 2).slice(0, 2);
+    const h = Math.max(26, nameLines.length * 11 + 15, flagLines.length * 10 + 8);
+    w.ensure(h);
+    if (idx % 2 === 1) w.page.drawRectangle({ x: M, y: w.y - h, width: w.cw, height: h, color: w.rgb([0.973, 0.979, 0.988]) });
+    const y1 = w.y - 12;
+    // student + file
+    nameLines.forEach((ln, i) => w.text(ln, colOf("student").x + PAD, y1 - i * 11, fonts.bold, 9.5, C.ink));
+    let file = pdfClean(s ? r.file : "no .py file");
+    while (file.length > 3 && fonts.reg.widthOfTextAtSize(file, 7.5) > colOf("student").w - PAD * 2) file = file.slice(0, -2);
+    if (s && file !== pdfClean(r.file)) file += "…";
+    w.text(file, colOf("student").x + PAD, y1 - nameLines.length * 11 + 1, fonts.reg, 7.5, C.muted);
+    if (showPer) cell(colOf("per"), shortPeriod(r.period), y1);
+    if (s) {
+      cell(colOf("loc"), String(s.loc), y1);
+      cell(colOf("types"), String(s.unique), y1);
+      cell(colOf("errors"), String(s.total), y1);
+      cell(colOf("band"), String(s.band), y1);
+      const hc = colOf("hdr");
+      if (s.hasHeader) w.mark(true, hc.x + hc.w / 2 - 4, y1);
+      else cell(hc, s.deduct ? "-1" : "x", y1, { font: fonts.bold, color: C.pen });
+      if (runs) {
+        const rc = colOf("runs");
+        if (s.run.status === "ok") w.mark(true, rc.x + PAD, y1);
+        else cell(rc, `${SHORT_STATUS[s.run.status] || STATUS[s.run.status].label}${s.runDeduct ? " -1" : ""}`, y1,
+          { font: fonts.bold, color: STATUS[s.run.status].deduct ? C.pen : C.mid });
+      }
+      if (tests) cell(colOf("tests"), s.run.pending ? "..." : `${s.run.passed}/${s.run.total}`, y1);
+      if (s.rubric) {
+        cell(colOf("out"), s.rubric.pending ? "..." : String(s.rubric.output), y1, { font: fonts.bold });
+        cell(colOf("sub"), String(s.rubric.submission), y1, { font: fonts.bold });
+      }
+      const finCol = s.final >= 4 ? C.good : s.final === 3 ? C.mid : C.pen;
+      cell(colOf("final"), String(s.final), y1 + 0.5, { font: fonts.bold, size: 12, color: finCol });
+      cell(colOf("top"), s.top ? `${s.top.code} x${s.top.occ.length}` : "None", y1, s.top ? {} : { color: C.good });
+    } else {
+      const span = cols.filter((c) => !["student", "per", "flags"].includes(c.k));
+      w.text("No Python file found", span[0].x + PAD, y1, fonts.bold, 9, C.pen);
+    }
+    flagLines.forEach((ln, i) => w.text(ln, fc.x + PAD, y1 - i * 10, fonts.reg, 8, s ? C.muted : C.pen));
+    w.y -= h;
+    w.page.drawLine({ start: { x: M, y: w.y }, end: { x: M + w.cw, y: w.y }, thickness: 0.5, color: w.rgb(C.soft) });
+  });
+  w.onNewPage = null;
+
+  // key
+  w.gap(10);
+  const key = "Types = unique mistake types (the grade is based on these). Errors = total style errors, counting repeats. Band = style band before deductions. "
+ + "Hdr: check = header present, -1 = missing." + (settings.tcCheck ? ` Test cases count TEST CASE 1 to ${TC_MAX} comments, or a submitted document.` : "")
+    + (rubricOn() ? " Output = Program & Output (from failed checks), Sub = Submission. Final = average of Output, Band (style) and Sub, never above Output, then -1 for a missing header."
+      : runs ? " Runs: check = ran; -1 for crash, timeout, or syntax error." : "");
+  w.para(key, { size: 8, color: C.faint });
+
+  w.finish();
+  return new Blob([await doc.save()], { type: "application/pdf" });
+}
+
+async function downloadSummaryPdf() {
+  if (!results.length && !others.length) return;
+  if (results.some((r) => inPeriod(r) && (!r.raw || (score(r) && score(r).run && score(r).run.pending)))
+    && !confirm("Some files are still being checked. Make the summary anyway? Unfinished results will be left out.")) return;
+  try {
+    await loadPdfLib();
+    const title = (settings.reportTitle || "pep8").trim().replace(/[^\w\- ]+/g, "").replace(/\s+/g, "-") || "pep8";
+    saveBlob(await buildSummaryPdf(), `${title}${periodSlug()}-class-summary.pdf`);
+  } catch (e) { console.error(e); toast("Couldn't make the class summary. Check your internet connection and try again."); }
+}
+fillSettings();
+renderEditor();
+bindSettings();
+bindEvents();
+bindEditor();
+render();
+if (typeof loadPyodide === "function") initPython();
+else {
+  $("status").className = "status error";
+  $("statusText").textContent = "Couldn't load Python. Check your internet connection and reload.";
+}
+</script>
+</body></html>
