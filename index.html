@@ -83,8 +83,11 @@ textarea{font-family:var(--mono);font-size:.85rem;min-height:160px;resize:vertic
 .check input{margin-top:4px}
 .grid2{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
 .mini{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:.875rem}
-.bands{display:grid;grid-template-columns:auto 1fr;gap:6px 12px;align-items:center;font-size:.875rem}
-.bands .b{font-family:var(--hand);font-size:1.25rem;line-height:1}
+.bands{display:grid;grid-template-columns:auto 1fr;gap:6px 10px;align-items:center;font-size:.875rem}
+.bands .b{font-weight:600;white-space:nowrap}
+.bands .b .n{font-family:var(--hand);font-size:1.25rem;line-height:1;font-weight:400;margin-right:2px}
+.bands .rng{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.bands .rng input{width:4.5em}
 
 .summary-head{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:baseline;gap:12px;margin:0 0 12px}
 .summary-head h2{margin:0;font-size:1.35rem}
@@ -304,13 +307,13 @@ details.test>summary{cursor:pointer;font-weight:600}
           <label class="check"><input type="checkbox" id="groupFiles"> <span><strong>Grade each student's .py files together</strong> (one score per student). Each mistake type counts once across all their files, every file needs a header, and the program runs from one main file that can import the others.</span></label>
           <div>
             <span class="lbl">Rubric bands</span>
-            <p class="hint" style="margin:2px 0 8px">Highest band a file earns for its weighted count of unique mistake types.</p>
+            <p class="hint" style="margin:2px 0 8px">Each unique mistake type adds its category weight below (repeats never add more). With every weight at 0.5, 4 unique mistakes = 2 mistake points.</p>
             <div class="bands">
-              <span class="b">5</span><span>0 to <input type="number" id="t5" min="0" step="0.5" aria-label="Band 5 maximum"> points</span>
-              <span class="b">4</span><span>up to <input type="number" id="t4" min="0" step="0.5" aria-label="Band 4 maximum"> points</span>
-              <span class="b">3</span><span>up to <input type="number" id="t3" min="0" step="0.5" aria-label="Band 3 maximum"> points</span>
-              <span class="b">2</span><span>up to <input type="number" id="t2" min="0" step="0.5" aria-label="Band 2 maximum"> points</span>
-              <span class="b">1</span><span>anything above</span>
+              <span class="b"><span class="n">5</span> points ~</span><span class="rng">0 to <input type="number" id="t5" min="0" step="0.5" aria-label="5 points: maximum mistake points"> mistake points</span>
+              <span class="b"><span class="n">4</span> points ~</span><span class="rng">up to <input type="number" id="t4" min="0" step="0.5" aria-label="4 points: maximum mistake points"> mistake points</span>
+              <span class="b"><span class="n">3</span> points ~</span><span class="rng">up to <input type="number" id="t3" min="0" step="0.5" aria-label="3 points: maximum mistake points"> mistake points</span>
+              <span class="b"><span class="n">2</span> points ~</span><span class="rng">up to <input type="number" id="t2" min="0" step="0.5" aria-label="2 points: maximum mistake points"> mistake points</span>
+              <span class="b"><span class="n">1</span> point ~</span><span class="rng">more than <strong id="t1Label"></strong> mistake points</span>
             </div>
           </div>
           <div>
@@ -896,7 +899,7 @@ const FRIENDLY = {
 
 const DEFAULTS = {
   t5: 0, t4: 2, t3: 4, t2: 6,
-  weights: Object.fromEntries(CATEGORIES.map((c) => [c.id, 1])),
+  weights: Object.fromEntries(CATEGORIES.map((c) => [c.id, 0.5])),
   headerDeduct: true, naming: true, minLines: 25, maxLen: 79,
   tcCheck: true, tcDeduct: false, tcMin: 1, groupFiles: false,
   mode: "pep8", runInputs: "", runAlts: [], timeout: 5, runDeduct: true, rubric: true, tests: [], reportTitle: ""
@@ -1318,7 +1321,7 @@ function score(rec) {
     groups.get(code).occ.push(file === undefined ? { line, col, text } : { line, col, text, file, fi });
   }
   const list = [...groups.values()].sort((a, b) => b.occ.length - a.occ.length || a.code.localeCompare(b.code));
-  const weighted = list.reduce((s, g) => s + Number(settings.weights[g.cat] ?? 1), 0);
+  const weighted = list.reduce((s, g) => s + Number(settings.weights[g.cat] ?? 0.5), 0);
   const total = raw.items.length;
   let band = 1;
   if (weighted <= settings.t5) band = 5;
@@ -1945,6 +1948,7 @@ function toast(msg) {
 /* ---------- settings UI ---------- */
 function fillSettings() {
   for (const k of ["t5", "t4", "t3", "t2", "minLines", "maxLen"]) $(k).value = settings[k];
+  $("t1Label").textContent = settings.t2;
   $("headerDeduct").checked = settings.headerDeduct;
   $("naming").checked = settings.naming;
   $("tcCheck").checked = settings.tcCheck;
@@ -1965,6 +1969,7 @@ function bindSettings() {
     $(k).addEventListener("input", () => {
       const v = parseFloat($(k).value);
       if (!isNaN(v)) { settings[k] = v; saveSettings(); render(); }
+      if (k === "t2") $("t1Label").textContent = $("t2").value;
     });
   }
   $("maxLen").addEventListener("change", () => {
