@@ -160,6 +160,9 @@ tbody td:first-child{white-space:normal}
 .ln.hdr{background:var(--header-bg);color:var(--muted)}
 .ln.hdr .codes{color:var(--muted)}
 .ln.flash{outline:2px solid var(--focus);outline-offset:-2px}
+.ln.filehead{font-family:var(--sans);font-weight:600;color:var(--ink);border-top:1px solid var(--line);border-bottom:1px solid var(--line);background:var(--soft);padding-top:4px;padding-bottom:4px;margin:10px 0 2px}
+.ln.filehead:first-child{margin-top:0}
+.ln.filehead .tag{font-weight:400;color:var(--muted);margin-left:8px}
 .hdr-label{font-family:var(--sans);font-size:.75rem;color:var(--muted);padding:0 16px 6px 4.6em}
 
 .toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--paper);padding:10px 16px;border-radius:8px;font-size:.9rem;opacity:0;pointer-events:none;transition:opacity .2s}
@@ -298,6 +301,7 @@ details.test>summary{cursor:pointer;font-weight:600}
       <details class="panel" id="settingsPanel">
         <summary>Grading settings</summary>
         <div class="panel-body">
+          <label class="check"><input type="checkbox" id="groupFiles"> <span><strong>Grade each student's .py files together</strong> (one score per student). Each mistake type counts once across all their files, every file needs a header, and the program runs from one main file that can import the others.</span></label>
           <div>
             <span class="lbl">Rubric bands</span>
             <p class="hint" style="margin:2px 0 8px">Highest band a file earns for its weighted count of unique mistake types.</p>
@@ -648,8 +652,10 @@ def check(source, max_len=79, naming=True):
 </script>
 <script type="text/x-python" id="runsrc">
 import builtins
+import importlib
 import json
 import os
+import shutil
 import sys
 import time
 import traceback
@@ -658,6 +664,33 @@ import traceback
 # Neither works (or matters) here, so make them harmless.
 os.system = lambda *args, **kwargs: 0
 time.sleep = lambda *args, **kwargs: None
+
+# The student's other .py files go here so the main program can import them.
+# No .pyc files: a rewritten file with the same size and time would load stale.
+_RUN_DIR = '/tmp/student_files'
+sys.dont_write_bytecode = True
+
+
+def _setup_files(files):
+    for name in list(sys.modules):
+        path = getattr(sys.modules.get(name), '__file__', None) or ''
+        if path.startswith(_RUN_DIR):
+            del sys.modules[name]
+    shutil.rmtree(_RUN_DIR, ignore_errors=True)
+    os.makedirs(_RUN_DIR, exist_ok=True)
+    for name, src in files.items():
+        with open(os.path.join(_RUN_DIR, name), 'w', encoding='utf-8') as fh:
+            fh.write(src)
+    if _RUN_DIR not in sys.path:
+        sys.path.insert(0, _RUN_DIR)
+    importlib.invalidate_caches()
+
+
+def _where(filename):
+    """None for the main program, or the name of the other file."""
+    if filename and filename.startswith(_RUN_DIR + '/'):
+        return os.path.basename(filename)
+    return None
 
 _GRAPHICS = {'turtle', 'tkinter', '_tkinter', 'pygame'}
 
@@ -695,15 +728,16 @@ class _Out:
 
 
 def _student_line(exc):
-    line = None
+    line, where = None, None
     for frame in traceback.extract_tb(exc.__traceback__):
-        if frame.filename == '<student>':
-            line = frame.lineno
-    return line
+        if frame.filename == '<student>' or _where(frame.filename):
+            line, where = frame.lineno, _where(frame.filename)
+    return line, where
 
 
-def run_student(source, inputs_json):
+def run_student(source, inputs_json, files_json='{}'):
     feed = json.loads(inputs_json)
+    _setup_files(json.loads(files_json or '{}'))
     out = _Out(200000)
     pos = [0]
 
@@ -721,7 +755,7 @@ def run_student(source, inputs_json):
     sys.stdout = out
     sys.stderr = out
     builtins.input = fake_input
-    status, error, line = 'ok', None, None
+    status, error, line, where = 'ok', None, None, None
     try:
         code = compile(source, '<student>', 'exec')
         exec(code, {'__name__': '__main__', '__builtins__': builtins})
@@ -737,8 +771,9 @@ def run_student(source, inputs_json):
         status = 'syntax'
         error = 'SyntaxError: %s' % exc.msg
         line = exc.lineno
+        where = _where(exc.filename)
     except ModuleNotFoundError as exc:
-        line = _student_line(exc)
+        line, where = _student_line(exc)
         if (exc.name or '').split('.')[0] in _GRAPHICS:
             status = 'unsupported'
             error = "Uses %s, which can't run in the browser" % exc.name
@@ -748,11 +783,12 @@ def run_student(source, inputs_json):
     except BaseException as exc:
         status = 'crashed'
         error = '%s: %s' % (type(exc).__name__, exc)
-        line = _student_line(exc)
+        line, where = _student_line(exc)
     finally:
         sys.stdout, sys.stderr, builtins.input = saved
     return json.dumps({'status': status, 'error': error, 'line': line,
-                       'output': out.text(), 'inputs_used': pos[0]})
+                       'file': where, 'output': out.text(),
+                       'inputs_used': pos[0]})
 </script>
 <script src="https://cdn.jsdelivr.net/pyodide/v0.26.4/full/pyodide.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
@@ -862,7 +898,7 @@ const DEFAULTS = {
   t5: 0, t4: 2, t3: 4, t2: 6,
   weights: Object.fromEntries(CATEGORIES.map((c) => [c.id, 1])),
   headerDeduct: true, naming: true, minLines: 25, maxLen: 79,
-  tcCheck: true, tcDeduct: false, tcMin: 1,
+  tcCheck: true, tcDeduct: false, tcMin: 1, groupFiles: false,
   mode: "pep8", runInputs: "", runAlts: [], timeout: 5, runDeduct: true, rubric: true, tests: [], reportTitle: ""
 };
 const STORE_KEY = "pep8-checker-settings-v1";
@@ -1141,14 +1177,145 @@ function readEntry(entry, prefix) {
   });
 }
 
+/* ---------- grading a student's files together ---------- */
+// With "Grade each student's .py files together" on, a student with several .py files becomes one
+// group record. It looks like a file record to the rest of the page (student, file, source, raw,
+// runs), plus: group: true, files (the members), main (the file that runs), siblings (importable).
+// Students with one .py file stay plain file records, so nothing changes for them.
+const MAIN_KEY = "pep8-checker-mainfile-v1";
+let mainPicks = (() => { try { return JSON.parse(localStorage.getItem(MAIN_KEY) || "{}"); } catch (e) { return {}; } })();
+function saveMainPicks() { try { localStorage.setItem(MAIN_KEY, JSON.stringify(mainPicks)); } catch (e) { /* ignore */ } }
+const groupCache = new Map();
+
+function groupKeyOf(r) {
+  if (r.pasted) return "paste:" + r.id;
+  return r.canvasId ? "id:" + r.canvasId : "name:" + String(r.student).toLowerCase();
+}
+// Canvas renames resubmitted files ("helpers-1.py"); import still says "import helpers".
+function moduleFileName(file) { return String(file).replace(/-\d+(\.py)$/i, "$1"); }
+function moduleName(file) { return moduleFileName(file).replace(/\.py$/i, ""); }
+function importsOf(src) {
+  const out = new Set();
+  for (const m of String(src).matchAll(/^[ \t]*(?:from[ \t]+([\w.]+)[ \t]+import\b|import[ \t]+([\w., \t]+))/gm)) {
+    for (const part of (m[1] || m[2]).split(",")) {
+      const n = part.trim().split(/\s+/)[0].split(".")[0];
+      if (n) out.add(n);
+    }
+  }
+  return out;
+}
+// The file that runs: your choice if you picked one; otherwise a file the others don't import,
+// preferring main.py, then an if __name__ == "__main__" block, then one that imports the others,
+// then one with TEST CASE comments, then the longest.
+function pickMain(g) {
+  const chosen = g.files.find((m) => m.file === mainPicks[g.gkey]);
+  if (chosen) return chosen;
+  const mods = new Set(g.files.map((m) => moduleName(m.file)));
+  const imported = new Set();
+  const usesSiblings = new Map();
+  for (const m of g.files) {
+    const own = moduleName(m.file);
+    const im = [...importsOf(m.source)].filter((n) => n !== own);
+    usesSiblings.set(m, im.some((n) => mods.has(n)));
+    im.forEach((n) => imported.add(n));
+  }
+  let cands = g.files.filter((m) => !imported.has(moduleName(m.file)));
+  if (!cands.length) cands = g.files;
+  const rank = (m) => (/^main$/i.test(moduleName(m.file)) ? 1000 : 0)
+    + (/__name__\s*==\s*['"]__main__['"]/.test(m.source) ? 100 : 0)
+    + (usesSiblings.get(m) ? 50 : 0)
+    + (/TEST\s*CASE/i.test(m.source) ? 20 : 0)
+    + Math.min(19, m.source.length / 2000);
+  return cands.slice().sort((a, b) => rank(b) - rank(a) || a.file.localeCompare(b.file))[0];
+}
+function siblingFiles(g) {
+  const out = {};
+  for (const m of g.files) {
+    if (m === g.main) continue;
+    const name = moduleFileName(m.file);
+    if (!out[name] || m.file === name) out[name] = m.source;
+  }
+  return out;
+}
+function mergeRaw(files) {
+  const items = [];
+  files.forEach((m, fi) => { for (const it of m.raw.items) items.push([it[0], it[1], it[2], it[3], m.file, fi]); });
+  const bad = files.find((m) => m.raw.syntax);
+  return {
+    items,
+    header_end: 0,
+    has_header: files.every((m) => m.raw.has_header),
+    missing_headers: files.filter((m) => !m.raw.has_header).map((m) => m.file),
+    loc: files.reduce((t, m) => t + m.raw.loc, 0),
+    total_lines: files.reduce((t, m) => t + m.raw.total_lines, 0),
+    syntax: bad ? [bad.raw.syntax[0], bad.raw.syntax[1], bad.file] : null,
+    test_cases: [...new Set(files.flatMap((m) => m.raw.test_cases || []))].sort((a, b) => a - b)
+  };
+}
+function syncGroup(key, members) {
+  members = members.slice().sort((a, b) => a.file.localeCompare(b.file) || a.id - b.id);
+  let g = groupCache.get(key);
+  if (!g) { g = { id: nextId++, group: true, gkey: key, runs: new Map() }; groupCache.set(key, g); }
+  const sig = members.map((m) => m.id).join(",");
+  if (g.sig !== sig) { g.sig = sig; g.runs = new Map(); g.rawRefs = null; g.raw = null; g.okey = null; }
+  const f0 = members[0];
+  g.files = members;
+  g.student = f0.student; g.period = f0.period || ""; g.canvasId = f0.canvasId; g.squashed = f0.squashed;
+  g.late = members.some((m) => m.late);
+  g.main = pickMain(g);
+  g.files = [g.main, ...members.filter((m) => m !== g.main)]; // the file that runs is listed first
+  g.source = g.main.source;
+  g.siblings = siblingFiles(g);
+  g.path = members.map((m) => m.path).join("\n");
+  g.file = `${members.length} files` + (settings.mode !== "pep8" ? `, runs ${g.main.file}` : "");
+  const refs = g.files.map((m) => m.raw);
+  if (refs.some((x) => !x)) g.raw = null;
+  else if (!g.rawRefs || refs.some((x, i) => x !== g.rawRefs[i])) { g.rawRefs = refs; g.raw = mergeRaw(g.files); }
+  g.okey = g.okey || `${key}|group|${hashStr(members.map((m) => m.file + "\n" + m.source).join("\n\u0000"))}`;
+  return g;
+}
+// What the table, reports and runner work on: file records, or groups when grading together.
+function entries() {
+  if (!settings.groupFiles) return results;
+  const byKey = new Map();
+  for (const r of results) {
+    const k = groupKeyOf(r);
+    if (!byKey.has(k)) byKey.set(k, []);
+    byKey.get(k).push(r);
+  }
+  const out = [];
+  for (const [k, members] of byKey) out.push(members.length === 1 ? members[0] : syncGroup(k, members));
+  for (const k of [...groupCache.keys()]) if (!byKey.has(k) || byKey.get(k).length < 2) groupCache.delete(k);
+  return out;
+}
+function filesOf(rec) { return rec.group ? rec.files : [rec]; }
+// The syntax error that stops the program from starting (the main file's, for a group).
+function runSyntax(rec) { return rec.group ? rec.main.raw && rec.main.raw.syntax : rec.raw && rec.raw.syntax; }
+function runKey(rec, inputs) { return (rec.group ? rec.main.file + "|" : "") + inputsKey(inputs); }
+// Index of the file a run error points at (a group's other files report their own name).
+function fileIndex(rec, name) {
+  const fs = filesOf(rec);
+  if (!rec.group) return 0;
+  const i = name ? fs.findIndex((m) => moduleFileName(m.file) === name || m.file === name) : -1;
+  return i >= 0 ? i : fs.indexOf(rec.main);
+}
+function headerMissingText(rec, s) {
+  if (s.hasHeader) return "";
+  return rec.group ? `No header block in ${s.missingHeaders.join(", ")}` : "No header block found";
+}
+function syntaxText(s, who) {
+  return `Python couldn't read ${s.syntax[2] || who} (line ${s.syntax[0]}: ${s.syntax[1]})`;
+}
+function inFile(rec, file) { return rec.group && file ? ` in ${file}` : rec.group ? ` in ${rec.main.file}` : ""; }
+
 /* ---------- scoring ---------- */
 function score(rec) {
   const raw = rec.raw;
   if (!raw) return null;
   const groups = new Map();
-  for (const [line, col, code, text] of raw.items) {
+  for (const [line, col, code, text, file, fi] of raw.items) {
     if (!groups.has(code)) groups.set(code, { code, cat: catOf(code), msg: FRIENDLY[code] || text, occ: [] });
-    groups.get(code).occ.push({ line, col, text });
+    groups.get(code).occ.push(file === undefined ? { line, col, text } : { line, col, text, file, fi });
   }
   const list = [...groups.values()].sort((a, b) => b.occ.length - a.occ.length || a.code.localeCompare(b.code));
   const weighted = list.reduce((s, g) => s + Number(settings.weights[g.cat] ?? 1), 0);
@@ -1159,7 +1326,7 @@ function score(rec) {
   else if (weighted <= settings.t3) band = 3;
   else if (weighted <= settings.t2) band = 2;
   const deduct = !raw.has_header && settings.headerDeduct ? 1 : 0;
-  const run = computeRun(rec, { syntax: raw.syntax });
+  const run = computeRun(rec, { syntax: runSyntax(rec) });
   const tc = testCaseInfo(rec);
   const useRubric = rubricOn();
   let runDeduct = 0, calculated, rubric = null, steps = [];
@@ -1188,7 +1355,7 @@ function score(rec) {
   return {
     run, runDeduct, tc, rubric, steps, calculated, overridden, note: ov ? ov.note || "" : "",
     groups: list, unique: list.length, weighted: Math.round(weighted * 100) / 100, total, band, deduct, final,
-    hasHeader: raw.has_header, headerEnd: raw.header_end, loc: raw.loc,
+    hasHeader: raw.has_header, headerEnd: raw.header_end, missingHeaders: raw.missing_headers || [], loc: raw.loc,
     short: raw.loc < settings.minLines, syntax: raw.syntax,
     top: list[0] ? list[0] : null
   };
@@ -1376,7 +1543,7 @@ function render() {
   updatePeriodFilter();
   const showPeriod = anyPeriods();
   const pcell = (r) => (showPeriod ? `<td class="ctr" title="${esc(r.period || "Not on roster")}">${esc(shortPeriod(r.period))}</td>` : "");
-  const rows = results.filter(inPeriod).map((r) => ({ r, s: score(r) })).concat(missing.filter(inPeriod).map((m) => ({ r: m, s: null })));
+  const rows = entries().filter(inPeriod).map((r) => ({ r, s: score(r) })).concat(missing.filter(inPeriod).map((m) => ({ r: m, s: null })));
   rows.sort((a, b) => {
     const va = sortValue(a.r, a.s), vb = sortValue(b.r, b.s);
     if (va < vb) return -sortDir;
@@ -1406,8 +1573,9 @@ function render() {
     if (s.short) flags.push(`<span class="flag" title="Short sample: under ${settings.minLines} lines of code">Short</span>`);
     if (r.late) flags.push(`<span class="flag">Late</span>`);
     if (s.overridden) flags.push(`<span class="flag" title="Adjusted by you. Calculated score: ${s.calculated}">Adj</span>`);
-    const header = s.hasHeader ? `<span class="hdr-ok" title="Header present">✓</span>`
-      : `<span class="hdr-miss" title="No header block">${s.deduct ? "−1" : "✗"}</span>`;
+    const header = s.hasHeader ? `<span class="hdr-ok" title="${r.group ? "Header present in every file" : "Header present"}">✓</span>`
+      : `<span class="hdr-miss" title="${esc(headerMissingText(r, s))}">${s.deduct ? "−1" : "✗"}</span>`;
+    if (r.group) flags.unshift(`<span class="flag" title="${esc(r.files.map((m) => m.file).join("\n"))}">${r.files.length} files</span>`);
     const st = s.run ? STATUS[s.run.status] : null;
     const runCell = s.run ? `<td title="${esc(st.label + (s.run.error ? ": " + s.run.error : ""))}"><span class="${st.cls}">${s.run.status === "ok" ? "✓" : SHORT_STATUS[s.run.status] || st.label}${s.runDeduct ? " −1" : ""}</span></td>` : "";
     const testCell = settings.mode === "tests" ? `<td class="num">${s.run.pending ? "…" : `${s.run.passed}/${s.run.total}`}</td>` : "";
@@ -1433,7 +1601,12 @@ function render() {
     const avg = scored.length ? scored.reduce((t, x) => t + x.s.final, 0) / scored.length : 0;
     const noHdr = scored.filter((x) => !x.s.hasHeader).length;
     const short = scored.filter((x) => x.s.short).length;
-    const parts = [`${scored.length} file${scored.length === 1 ? "" : "s"} checked${periodFilter ? ` in ${periodFilter === "__none" ? "students not on the roster" : periodFilter}` : ""}`];
+    const unit = settings.groupFiles ? "student" : "file";
+    const parts = [`${scored.length} ${unit}${scored.length === 1 ? "" : "s"} checked${periodFilter ? ` in ${periodFilter === "__none" ? "students not on the roster" : periodFilter}` : ""}`];
+    if (settings.groupFiles) {
+      const nFiles = scored.reduce((t, x) => t + filesOf(x.r).length, 0);
+      if (nFiles > scored.length) parts[0] += ` (${nFiles} files)`;
+    }
     if (scored.length) parts.push(`average final score ${avg.toFixed(1)}`);
     if (missing.length) parts.push(`${missing.length} student${missing.length === 1 ? "" : "s"} with no Python file`);
     if (noHdr) parts.push(`${noHdr} missing a header`);
@@ -1456,11 +1629,29 @@ let lastDetailSig = "";
 function detailSig(rec) {
   const runs = rec.runs ? [...rec.runs.entries()].map(([k, v]) => k + ":" + (v === "pending" ? "p" : v.status)).join(",") : "";
   const ov = getOverride(rec);
-  return JSON.stringify(settings) + "|" + rec.id + "|" + (rec.raw ? 1 : 0) + "|" + runs + "|" + (ov && ov.score ? ov.score : "");
+  return JSON.stringify(settings) + "|" + rec.id + "|" + (rec.raw ? 1 : 0) + "|" + (rec.group ? rec.sig + "|" + rec.main.file : "") + "|" + runs + "|" + (ov && ov.score ? ov.score : "");
+}
+
+function srcLines(source) {
+  const lines = source.replace(/\r\n?/g, "\n").split("\n");
+  if (lines.length && lines[lines.length - 1] === "") lines.pop();
+  return lines;
+}
+function lineId(recId, fi, n) { return `L${recId}-${fi || 0}-${n}`; }
+
+function mainPickHtml(rec) {
+  const auto = mainPicks[rec.gkey] ? "" : " selected";
+  const opts = rec.files.map((m) => `<option value="${esc(m.file)}" ${mainPicks[rec.gkey] === m.file ? "selected" : ""}>${esc(m.file)}</option>`).join("");
+  const autoName = (() => { const saved = mainPicks[rec.gkey]; delete mainPicks[rec.gkey]; const m = pickMain(rec).file; if (saved) mainPicks[rec.gkey] = saved; return m; })();
+  return `<div class="override">
+    <label class="cf"><span>Program to run</span>
+      <select id="mainPick" style="min-width:16em"><option value=""${auto}>Automatic (${esc(autoName)})</option>${opts}</select></label>
+    <p class="hint" style="margin:0;align-self:end">The other files are saved next to it, so <code>import</code> works with them.</p>
+  </div>`;
 }
 
 function renderDetail(scroll) {
-  const rec = results.find((r) => r.id === selectedId);
+  const rec = entries().find((r) => r.id === selectedId);
   const box = $("detail");
   if (!rec) { box.hidden = true; lastDetailSig = ""; return; }
   const sig = detailSig(rec);
@@ -1470,21 +1661,22 @@ function renderDetail(scroll) {
   box.hidden = false;
   if (!s) { box.innerHTML = `<div class="detail-head"><h2>${esc(rec.student)}</h2><p>Waiting to check…</p></div>`; return; }
 
-  const lines = rec.source.replace(/\r\n?/g, "\n").split("\n");
-  if (lines.length && lines[lines.length - 1] === "") lines.pop();
-  const byLine = new Map();
+  const files = filesOf(rec);
+  const byLine = new Map(); // "fileIndex:line" -> occurrences
   for (const g of s.groups) for (const o of g.occ) {
-    if (!byLine.has(o.line)) byLine.set(o.line, []);
-    byLine.get(o.line).push(o);
+    const k = `${o.fi || 0}:${o.line}`;
+    if (!byLine.has(k)) byLine.set(k, []);
+    byLine.get(k).push(o);
   }
+  const where = (o) => (rec.group ? `${o.file}:${o.line}` : `line ${o.line}`);
 
   const breakdown = s.rubric
     ? [`<li>Program &amp; Output: <strong>${s.rubric.pending ? "…" : s.rubric.output}</strong> (${s.rubric.out.syntax ? "syntax error" : `${s.rubric.out.failed} of ${s.rubric.out.total} checks failed`})</li>`,
-      `<li>Style: <strong>${s.band}</strong> (${s.unique} unique mistake type${s.unique === 1 ? "" : "s"}, ${s.weighted} weighted point${s.weighted === 1 ? "" : "s"})</li>`,
+      `<li>Style: <strong>${s.band}</strong> (${s.unique} unique mistake type${s.unique === 1 ? "" : "s"}, ${s.weighted} weighted point${s.weighted === 1 ? "" : "s"}${rec.group ? `, across ${files.length} files` : ""})</li>`,
       `<li>Submission: <strong>${s.rubric.submission}</strong></li>`,
       `<li>How the score is figured: ${esc(s.steps.join("; "))}</li>`]
-    : [`<li>Style band: <strong>${s.band}</strong> (${s.unique} unique mistake type${s.unique === 1 ? "" : "s"}, ${s.weighted} weighted point${s.weighted === 1 ? "" : "s"})</li>`];
-  if (!s.hasHeader) breakdown.push(`<li class="${s.deduct ? "minus" : ""}">No header block found${s.deduct ? ": −1 point" : " (not deducted)"}</li>`);
+    : [`<li>Style band: <strong>${s.band}</strong> (${s.unique} unique mistake type${s.unique === 1 ? "" : "s"}, ${s.weighted} weighted point${s.weighted === 1 ? "" : "s"}${rec.group ? `, across ${files.length} files` : ""})</li>`];
+  if (!s.hasHeader) breakdown.push(`<li class="${s.deduct ? "minus" : ""}">${esc(headerMissingText(rec, s))}${s.deduct ? ": −1 point" : " (not deducted)"}</li>`);
   if (s.run && !s.run.pending && s.run.status !== "ok") breakdown.push(`<li class="${s.runDeduct ? "minus" : ""}">Program ${STATUS[s.run.status].label.toLowerCase()}${s.runDeduct ? ": −1 point" : ""}</li>`);
   if (s.run && settings.mode === "tests" && !s.run.pending) breakdown.push(`<li>Tests passed: ${s.run.passed}/${s.run.total}${s.rubric ? "" : " (shown for feedback; doesn't change the score)"}</li>`);
   if (s.tc.on) breakdown.push(`<li class="${s.tc.deduct ? "minus" : ""}">${esc(testCaseText(s.tc))}${s.tc.deduct ? `: fewer than ${s.tc.need}, −1 point` : ""}</li>`);
@@ -1492,10 +1684,14 @@ function renderDetail(scroll) {
   if (s.overridden) breakdown.push(`<li><strong>Adjusted by you</strong> from ${s.calculated} to ${s.final}</li>`);
 
   let notes = "";
-  if (s.hasHeader) notes += `<p class="note ok">Header block found on lines 1–${s.headerEnd}. It isn't graded for style.</p>`;
+  if (rec.group) notes += `<p class="note">Graded together: ${files.length} files (${esc(files.map((m) => m.file).join(", "))}). Each mistake type counts once across all of them.${settings.mode !== "pep8" ? ` The program runs from ${esc(rec.main.file)}.` : ""}</p>`;
+  if (rec.group) {
+    if (s.hasHeader) notes += `<p class="note ok">Every file has a header block. Headers aren't graded for style.</p>`;
+    else notes += `<p class="note bad">${esc(headerMissingText(rec, s))}.${s.deduct ? " This costs 1 point (once, however many files are missing one)." : ""}</p>`;
+  } else if (s.hasHeader) notes += `<p class="note ok">Header block found on lines 1–${s.headerEnd}. It isn't graded for style.</p>`;
   else notes += `<p class="note bad">No header block at the top of the file.${s.deduct ? " This costs 1 point." : ""}</p>`;
   if (s.short) notes += `<p class="note">Short sample: ${s.loc} lines of code, under the ${settings.minLines}-line minimum. The score may not reflect this student's habits.</p>`;
-  if (s.syntax) notes += `<p class="note bad">Python couldn't read this file (line ${s.syntax[0]}: ${esc(s.syntax[1])}). Some style checks may be missing.</p>`;
+  if (s.syntax) notes += `<p class="note bad">${esc(syntaxText(s, "this file"))}. Some style checks may be missing.</p>`;
   if (rec.late) notes += `<p class="note">Canvas marked this submission late.</p>`;
   const extra = othersFor(rec);
   if (extra.length) notes += `<p class="note">Also submitted ${esc(kindSummary(extra))} (not checked): ${esc(extra.map((o) => o.file).join(", "))}</p>`;
@@ -1510,33 +1706,42 @@ function renderDetail(scroll) {
       issuesHtml += gs.map((g) => `<div class="issue">
           <div class="issue-top"><span class="issue-msg">${esc(g.msg)}</span><span class="count" aria-label="${g.occ.length} times">×${g.occ.length}</span></div>
           <span class="code-id">${esc(g.code)}</span>
-          <div class="chips">${g.occ.map((o) => `<button type="button" class="chip" data-line="${o.line}" title="${esc(o.text)}">line ${o.line}</button>`).join("")}</div>
+          <div class="chips">${g.occ.map((o) => `<button type="button" class="chip" data-line="${o.line}" data-fi="${o.fi || 0}" title="${esc(o.text)}">${esc(where(o))}</button>`).join("")}</div>
         </div>`).join("");
     }
   }
 
   let codeHtml = "";
-  lines.forEach((text, i) => {
-    const n = i + 1;
-    const hits = byLine.get(n);
-    const isHdr = s.hasHeader && n <= s.headerEnd;
-    const cls = hits ? "ln hit" : isHdr ? "ln hdr" : "ln";
-    const tags = hits ? [...new Set(byLineCodes(s, n))].join(" ") : (isHdr && n === 1 ? "header" : "");
-    const title = hits ? ` title="${esc(hits.map((h) => h.text).join("\n"))}"` : "";
-    codeHtml += `<div class="${cls}" id="L${rec.id}-${n}"${title}><span class="n">${n}</span><span class="src">${esc(text) || " "}</span><span class="codes">${esc(tags)}</span></div>`;
+  files.forEach((f, fi) => {
+    const fr = f.raw || {};
+    const lines = srcLines(f.source);
+    if (rec.group) {
+      const tags = [];
+      if (settings.mode !== "pep8" && f === rec.main) tags.push("runs");
+      if (!fr.has_header) tags.push("no header");
+      codeHtml += `<div class="ln filehead"><span class="n"></span><span class="src">${esc(f.file)}${tags.length ? `<span class="tag">${esc(tags.join(", "))}</span>` : ""}</span><span class="codes"></span></div>`;
+    }
+    lines.forEach((text, i) => {
+      const n = i + 1;
+      const hits = byLine.get(`${fi}:${n}`);
+      const isHdr = fr.has_header && n <= fr.header_end;
+      const cls = hits ? "ln hit" : isHdr ? "ln hdr" : "ln";
+      const tags = hits ? [...new Set(byLineCodes(s, n, fi))].join(" ") : (isHdr && n === 1 ? "header" : "");
+      const title = hits ? ` title="${esc(hits.map((h) => h.text).join("\n"))}"` : "";
+      codeHtml += `<div class="${cls}" id="${lineId(rec.id, fi, n)}"${title}><span class="n">${n}</span><span class="src">${esc(text) || " "}</span><span class="codes">${esc(tags)}</span></div>`;
+    });
+    if ([...byLine.keys()].some((k) => { const [a, b] = k.split(":").map(Number); return a === fi && b > lines.length; })) {
+      const n = lines.length + 1;
+      codeHtml += `<div class="ln hit" id="${lineId(rec.id, fi, n)}"><span class="n">${n}</span><span class="src"> </span><span class="codes">${esc(byLineCodes(s, n, fi).join(" "))}</span></div>`;
+    }
   });
-  const extraLines = [...byLine.keys()].filter((n) => n > lines.length);
-  if (extraLines.length) {
-    const n = lines.length + 1;
-    codeHtml += `<div class="ln hit" id="L${rec.id}-${n}"><span class="n">${n}</span><span class="src"> </span><span class="codes">${esc(byLineCodes(s, n).join(" "))}</span></div>`;
-  }
 
   box.innerHTML = `
     <div class="detail-head">
       ${mark(s.final, true)}
       <div>
         <h2>${esc(rec.student)}</h2>
-        <div class="code-id" title="${esc(rec.path)}">${esc(rec.file)}</div>
+        <div class="code-id" title="${esc(rec.path)}">${esc(rec.group ? files.map((m) => m.file).join(", ") : rec.file)}</div>
         <ul class="breakdown">${breakdown.join("")}</ul>
       </div>
       <div class="detail-actions">
@@ -1546,25 +1751,36 @@ function renderDetail(scroll) {
       </div>
     </div>
     ${overrideHtml(rec, s)}
+    ${rec.group && settings.mode !== "pep8" ? mainPickHtml(rec) : ""}
     <div class="detail-body">
       <div class="issues">${notes}${issuesHtml}</div>
       <div class="codeview" id="codeview">${codeHtml}</div>
     </div>
-    ${s.run ? runSectionHtml(s.run) : ""}`;
+    ${s.run ? runSectionHtml(s.run, rec) : ""}`;
   $("copyFeedback").onclick = () => copyText(feedbackText(rec, score(rec)), "Feedback copied");
   $("pdfOne").onclick = () => downloadOnePdf(rec);
   bindOverride(rec);
+  if ($("mainPick")) $("mainPick").addEventListener("change", () => {
+    const v = $("mainPick").value;
+    if (v) mainPicks[rec.gkey] = v; else delete mainPicks[rec.gkey];
+    saveMainPicks();
+    entries();          // re-pick the main file
+    scheduleRuns(); render(); renderDetail(false);
+  });
   $("closeDetail").onclick = () => { selectedId = null; box.hidden = true; render(); document.querySelector(`#tbody tr[data-id="${rec.id}"]`)?.focus(); };
-  box.querySelectorAll(".chip, .jump").forEach((b) => b.addEventListener("click", () => jumpTo(rec.id, b.dataset.line)));
+  box.querySelectorAll(".chip, .jump").forEach((b) => b.addEventListener("click", () => jumpTo(rec.id, b.dataset.line, b.dataset.fi)));
   if (scroll) box.scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
 }
 
-function runSectionHtml(run) {
+function runSectionHtml(run, rec) {
   const statusLine = (t) => {
     const st = STATUS[t.status];
     let h = `<span class="${st.cls}">${st.label}</span>`;
     if (t.error && t.status !== "ok") h += ` <span class="muted">${esc(t.error)}</span>`;
-    if (t.line) h += ` <button type="button" class="chip jump" data-line="${t.line}">line ${t.line}</button>`;
+    if (t.line) {
+      const fi = fileIndex(rec, t.file);
+      h += ` <button type="button" class="chip jump" data-line="${t.line}" data-fi="${fi}">${rec.group ? esc(filesOf(rec)[fi].file) + ":" + t.line : "line " + t.line}</button>`;
+    }
     return h;
   };
   const outBlock = (t) => {
@@ -1572,7 +1788,7 @@ function runSectionHtml(run) {
     if (t.status === "syntax") return `<p class="muted">The program has a syntax error, so it couldn't run.</p>`;
     return `<pre class="out">${esc(t.output || "") || '<span class="muted">(no output)</span>'}</pre>`;
   };
-  let h = `<div class="runs"><h3>${settings.mode === "tests" ? "Tests" : "Running the program"}</h3>`;
+  let h = `<div class="runs"><h3>${settings.mode === "tests" ? "Tests" : "Running the program"}${rec.group ? ` (${esc(rec.main.file)})` : ""}</h3>`;
   if (settings.mode === "runs") {
     const t = run.tests[0];
     h += `<p class="run-status">${statusLine(t)}</p>`;
@@ -1594,14 +1810,14 @@ function runSectionHtml(run) {
   return h + "</div>";
 }
 
-function byLineCodes(s, n) {
+function byLineCodes(s, n, fi = 0) {
   const out = [];
-  for (const g of s.groups) if (g.occ.some((o) => o.line === n)) out.push(g.code);
+  for (const g of s.groups) if (g.occ.some((o) => o.line === n && (o.fi || 0) === fi)) out.push(g.code);
   return out;
 }
 
-function jumpTo(id, line) {
-  const el = document.getElementById(`L${id}-${line}`);
+function jumpTo(id, line, fi) {
+  const el = document.getElementById(lineId(id, Number(fi) || 0, line));
   if (!el) return;
   const view = $("codeview");
   view.scrollTop = el.offsetTop - view.clientHeight / 3;
@@ -1611,13 +1827,20 @@ function jumpTo(id, line) {
 
 /* ---------- feedback & export ---------- */
 function lineList(occ) {
-  const ls = [...new Set(occ.map((o) => o.line))];
-  return ls.length > 12 ? ls.slice(0, 12).join(", ") + `, and ${ls.length - 12} more` : ls.join(", ");
+  const one = (list) => {
+    const ls = [...new Set(list.map((o) => o.line))];
+    return ls.length > 12 ? ls.slice(0, 12).join(", ") + `, and ${ls.length - 12} more` : ls.join(", ");
+  };
+  if (!occ.length || occ[0].file === undefined) return one(occ);
+  // several files: "main.py 3, 7; helpers.py 2"
+  const byFile = new Map();
+  for (const o of occ) { if (!byFile.has(o.file)) byFile.set(o.file, []); byFile.get(o.file).push(o); }
+  return [...byFile].map(([f, list]) => `${f} ${one(list)}`).join("; ");
 }
 
 function feedbackText(rec, s) {
   const out = [];
-  out.push(`PEP 8 style check: ${rec.file}`);
+  out.push(`PEP 8 style check: ${rec.group ? rec.files.map((m) => m.file).join(", ") : rec.file}`);
   let scoreLine = `Score: ${s.final}/5 (style band ${s.band}`;
   if (s.deduct) scoreLine += ", missing header −1";
   if (s.runDeduct) scoreLine += ", didn't run −1";
@@ -1628,12 +1851,13 @@ function feedbackText(rec, s) {
   out.push(scoreLine);
   if (s.rubric) out.push(`How the score is figured: ${s.steps.join("; ")}.`);
   if (s.note) out.push(`Note from your teacher: ${s.note}`);
-  out.push(`${s.unique} type${s.unique === 1 ? "" : "s"} of mistake, ${s.total} total. Each type counts once toward your score, no matter how many times it happens.`);
-  if (!s.hasHeader) out.push("No header block was found at the top of your file.");
+  out.push(`${s.unique} type${s.unique === 1 ? "" : "s"} of mistake, ${s.total} total. Each type counts once toward your score, no matter how many times it happens${rec.group ? " or in how many of your files" : ""}.`);
+  if (!s.hasHeader) out.push(rec.group ? `No header block was found at the top of ${s.missingHeaders.join(", ")}. Every file needs one.` : "No header block was found at the top of your file.");
   if (s.tc.on) out.push(`Test cases: ${testCaseText(s.tc)}.${s.tc.deduct ? ` At least ${s.tc.need} needed (label them TEST CASE 1: to TEST CASE ${TC_MAX}: in a comment at the end of your program).` : ""}`);
-  if (s.syntax) out.push(`Python couldn't read your file (line ${s.syntax[0]}: ${s.syntax[1]}).`);
+  if (s.syntax) out.push(`${syntaxText(s, "your file")}.`);
   if (s.run && !s.run.pending) {
-    if (s.run.status !== "ok" && s.run.status !== "syntax") out.push(`Program run: ${STATUS[s.run.status].label}${s.run.error ? ` (${s.run.error}${s.run.line ? `, line ${s.run.line}` : ""})` : ""}${s.runDeduct ? ", −1 point" : ""}.`);
+    if (rec.group) out.push(`Your program was run from ${rec.main.file}.`);
+    if (s.run.status !== "ok" && s.run.status !== "syntax") out.push(`Program run: ${STATUS[s.run.status].label}${s.run.error ? ` (${s.run.error}${s.run.line ? `, line ${s.run.line}${inFile(rec, s.run.file)}` : ""})` : ""}${s.runDeduct ? ", −1 point" : ""}.`);
     if (settings.mode === "tests") {
       out.push(`Tests passed: ${s.run.passed}/${s.run.total}`);
       for (const t of s.run.tests) {
@@ -1667,19 +1891,19 @@ function exportCsv() {
     ...(rubricOn() ? ["Program & Output", "Style", "Submission", "Average"] : []),
     "Final Score", "Calculated Score", "How the Score Was Figured", "Teacher Note", "Short Sample", "Syntax Error", "Most Frequent Issue", "Notes"];
   const lines = [head.join(",")];
-  const sorted = results.filter(inPeriod).sort((a, b) => periodNum(a.period) - periodNum(b.period) || a.student.localeCompare(b.student) || a.file.localeCompare(b.file));
+  const sorted = entries().filter(inPeriod).sort((a, b) => periodNum(a.period) - periodNum(b.period) || a.student.localeCompare(b.student) || a.file.localeCompare(b.file));
   for (const r of sorted) {
     const s = score(r);
     if (!s) continue;
     lines.push([
-      r.student, ...(withPeriod ? [r.period || ""] : []), r.canvasId, r.file, r.late ? "Yes" : "No", s.loc, s.unique, s.weighted, s.total, s.band,
-      s.hasHeader ? "Present" : "Missing", s.deduct ? -1 : 0,
+      r.student, ...(withPeriod ? [r.period || ""] : []), r.canvasId, r.group ? r.files.map((m) => m.file).join("; ") : r.file, r.late ? "Yes" : "No", s.loc, s.unique, s.weighted, s.total, s.band,
+      s.hasHeader ? "Present" : r.group ? `Missing: ${s.missingHeaders.join("; ")}` : "Missing", s.deduct ? -1 : 0,
       ...(settings.tcCheck ? [s.tc.count, s.tc.docs, s.tc.deduct ? -1 : 0] : []),
-      ...(runCols ? [STATUS[s.run.status].label, s.run.error ? `${s.run.error}${s.run.line ? `, line ${s.run.line}` : ""}` : "", s.runDeduct ? -1 : 0] : []),
+      ...(runCols ? [STATUS[s.run.status].label + (r.group ? ` (${r.main.file})` : ""), s.run.error ? `${s.run.error}${s.run.line ? `, line ${s.run.line}${inFile(r, s.run.file)}` : ""}` : "", s.runDeduct ? -1 : 0] : []),
       ...(testCols ? [s.run.pending ? "" : `${s.run.passed}/${s.run.total}`] : []),
       ...(rubricOn() ? (s.rubric ? [s.rubric.output, s.band, s.rubric.submission, Math.round(s.rubric.average * 100) / 100] : ["", "", "", ""]) : []),
       s.final, s.calculated, s.steps.join("; "), s.note, s.short ? "Yes" : "No",
-      s.syntax ? "Yes" : "No", s.top ? `${s.top.code} ${s.top.msg} (x${s.top.occ.length})` : "",
+      s.syntax ? (s.syntax[2] ? `Yes (${s.syntax[2]})` : "Yes") : "No", s.top ? `${s.top.code} ${s.top.msg} (x${s.top.occ.length})` : "",
       othersFor(r).length ? `Also submitted ${kindSummary(othersFor(r))}` : ""
     ].map(csvCell).join(","));
   }
@@ -1727,6 +1951,7 @@ function fillSettings() {
   $("tcDeduct").checked = settings.tcDeduct;
   $("tcMin").value = settings.tcMin;
   $("tcDeductRow").hidden = !settings.tcCheck;
+  $("groupFiles").checked = !!settings.groupFiles;
   $("weights").innerHTML = CATEGORIES.map((c) => `<label class="mini">${c.name}<input type="number" min="0" step="0.5" data-w="${c.id}" value="${settings.weights[c.id]}"></label>`).join("");
   $("weights").querySelectorAll("input").forEach((inp) => inp.addEventListener("input", () => {
     const v = parseFloat(inp.value);
@@ -1750,13 +1975,18 @@ function bindSettings() {
   $("naming").addEventListener("change", () => { settings.naming = $("naming").checked; saveSettings(); if (results.length) recheckAll(); });
   $("tcCheck").addEventListener("change", () => { settings.tcCheck = $("tcCheck").checked; $("tcDeductRow").hidden = !settings.tcCheck; saveSettings(); render(); });
   $("tcDeduct").addEventListener("change", () => { settings.tcDeduct = $("tcDeduct").checked; saveSettings(); render(); });
+  $("groupFiles").addEventListener("change", () => {
+    settings.groupFiles = $("groupFiles").checked; saveSettings();
+    selectedId = null; $("detail").hidden = true;
+    render(); scheduleRuns();
+  });
   $("tcMin").addEventListener("input", () => {
     const v = parseInt($("tcMin").value, 10);
     if (!isNaN(v)) { settings.tcMin = Math.min(TC_MAX, Math.max(1, v)); saveSettings(); render(); }
   });
   $("resetSettings").addEventListener("click", () => {
     const needRecheck = settings.maxLen !== DEFAULTS.maxLen || settings.naming !== DEFAULTS.naming;
-    const keep = { reportTitle: settings.reportTitle, mode: settings.mode, runInputs: settings.runInputs, runAlts: settings.runAlts, timeout: settings.timeout, runDeduct: settings.runDeduct, rubric: settings.rubric, tests: settings.tests };
+    const keep = { reportTitle: settings.reportTitle, mode: settings.mode, runInputs: settings.runInputs, runAlts: settings.runAlts, timeout: settings.timeout, runDeduct: settings.runDeduct, rubric: settings.rubric, tests: settings.tests, groupFiles: settings.groupFiles };
     settings = { ...structuredClone(DEFAULTS), ...keep }; saveSettings(); fillSettings();
     if (needRecheck && results.length) recheckAll(); else render();
     toast("Settings restored");
@@ -1771,13 +2001,13 @@ function bindEvents() {
   $("folderInput").addEventListener("change", (e) => { addFiles([...e.target.files]); e.target.value = ""; });
   $("clearAll").addEventListener("click", () => {
     if (!confirm("Remove all checked files from this page?")) return;
-    results = []; others = []; queue.length = 0; runJobs.length = 0; selectedId = null; $("progress").textContent = ""; render();
+    results = []; others = []; queue.length = 0; runJobs.length = 0; groupCache.clear(); selectedId = null; $("progress").textContent = ""; render();
   });
   $("pasteBtn").addEventListener("click", () => {
     const code = $("pasteCode").value;
     if (!code.trim()) { toast("Paste some Python code first."); return; }
     const name = $("pasteName").value.trim() || "Pasted code";
-    const rec = { id: nextId++, path: "pasted.py", source: code, raw: null, student: name, late: false, canvasId: "", file: "pasted.py" };
+    const rec = { id: nextId++, path: "pasted.py", source: code, raw: null, student: name, late: false, canvasId: "", file: "pasted.py", pasted: true };
     results.push(rec); queue.push(rec); selectedId = rec.id;
     render(); runQueue().then(() => renderDetail(true));
     if (!ready) toast("Python is still loading. Your code will be checked as soon as it's ready.");
@@ -1897,10 +2127,11 @@ onmessage = async (e) => {
       postMessage({ type: "ready" });
     } catch (err) { postMessage({ type: "error", error: String(err) }); }
   } else if (m.type === "run") {
-    try { await py.loadPackagesFromImports(m.source); } catch (err) {}
+    const others = Object.values(JSON.parse(m.files || "{}")).join("\\n");
+    try { await py.loadPackagesFromImports(m.source + "\\n" + others); } catch (err) {}
     postMessage({ type: "started" });
     let res;
-    try { res = JSON.parse(runFn(m.source, m.inputs)); }
+    try { res = JSON.parse(runFn(m.source, m.inputs, m.files || "{}")); }
     catch (err) { res = { status: "crashed", error: String(err), line: null, output: "" }; }
     postMessage({ type: "result", result: res });
   }
@@ -1933,12 +2164,12 @@ const Runner = {
     this.start();
     j.resolve({ status: "timeout", error: `Didn't finish within ${settings.timeout} seconds (possible endless loop)`, line: null, output: "" });
   },
-  async run(source, inputs) {
+  async run(source, inputs, files) {
     if (!this.worker) this.start();
     await this.ready;
     return new Promise((resolve) => {
       this.job = { resolve };
-      this.worker.postMessage({ type: "run", source, inputs: JSON.stringify(inputs) });
+      this.worker.postMessage({ type: "run", source, inputs: JSON.stringify(inputs), files: JSON.stringify(files || {}) });
     });
   }
 };
@@ -1965,14 +2196,14 @@ function setPasses(t, res) {
 function scheduleRuns() {
   if (settings.mode === "pep8") return;
   const tests = activeTests();
-  for (const rec of results) {
-    if (!rec.raw || rec.raw.syntax) continue;
+  for (const rec of entries()) {
+    if (!rec.raw || runSyntax(rec)) continue;
     rec.runs = rec.runs || new Map();
     for (const t of tests) {
       const sets = inputSets(t);
       // Alternates only run when the main inputs don't pass.
       for (let i = 0; i < sets.length; i++) {
-        const k = inputsKey(sets[i]);
+        const k = runKey(rec, sets[i]);
         const res = rec.runs.get(k);
         if (res === undefined) { rec.runs.set(k, "pending"); runJobs.push({ rec, inp: sets[i], k }); break; }
         if (res === "pending" || setPasses(t, res)) break;
@@ -1987,11 +2218,11 @@ async function processRuns() {
   let n = 0;
   while (runJobs.length) {
     const job = runJobs.shift();
-    const stillNeeded = results.includes(job.rec) && neededInputs().some((inp) => inputsKey(inp) === job.k);
+    const stillNeeded = entries().includes(job.rec) && neededInputs().some((inp) => runKey(job.rec, inp) === job.k);
     if (!stillNeeded) { job.rec.runs && job.rec.runs.delete(job.k); continue; }
     $("progress").textContent = Runner.worker ? `Running programs: ${runJobs.length + 1} left…` : "Starting the program runner…";
     let res;
-    try { res = await Runner.run(job.rec.source, job.inp); }
+    try { res = await Runner.run(job.rec.source, job.inp, job.rec.group ? job.rec.siblings : {}); }
     catch (e) { res = { status: "runner_error", error: "The program runner couldn't load. Check your internet connection and reload.", line: null, output: "" }; }
     job.rec.runs.set(job.k, res);
     if (++n % 3 === 0 || !runJobs.length) render();
@@ -2119,10 +2350,10 @@ function computeRun(rec, style) {
     const tried = [];
     let waiting = false;
     for (let i = 0; i < sets.length; i++) {
-      const res = rec.runs && rec.runs.get(inputsKey(sets[i]));
+      const res = rec.runs && rec.runs.get(runKey(rec, sets[i]));
       if (!res || res === "pending") { waiting = true; break; }
       const checks = (t.checks || []).map((c) => ({ label: checkLabel(c), ...evalCheck(c, res.output || "") }));
-      const entry = { name: t.name, status: res.status, error: res.error, line: res.line, output: res.output || "", inputs: sets[i],
+      const entry = { name: t.name, status: res.status, error: res.error, line: res.line, file: res.file || null, output: res.output || "", inputs: sets[i],
         checks, alt: i, alts: sets.length - 1, pass: res.status === "ok" && checks.every((c) => c.pass) };
       tried.push(entry);
       if (entry.pass) break;
@@ -2140,7 +2371,7 @@ function computeRun(rec, style) {
   const firstBad = done.find((t) => t.status === w && w !== "ok");
   return {
     status: pending && w === "ok" ? "pending" : w, pending,
-    error: firstBad ? firstBad.error : null, line: firstBad ? firstBad.line : null,
+    error: firstBad ? firstBad.error : null, line: firstBad ? firstBad.line : null, file: firstBad ? firstBad.file : null,
     tests: out, passed: out.filter((t) => t.pass).length, total: out.length
   };
 }
@@ -2574,9 +2805,12 @@ async function buildPdf(rec, s) {
     w.para(`How the score is figured: ${s.steps.join("; ")}.`, { size: 9.5, color: PDF_C.muted });
     w.gap(4);
   }
-  w.para(`Style band ${s.band}: ${s.unique} type${s.unique === 1 ? "" : "s"} of mistake, ${s.total} in total`);
-  w.para(s.hasHeader ? "Header block found" : `No header block found${s.deduct ? ": -1 point" : ""}`, s.hasHeader ? {} : minus);
+  if (rec.group) w.para(`Graded together: ${rec.files.map((m) => m.file).join(", ")}`, { size: 9.5, color: PDF_C.muted });
+  w.para(`Style band ${s.band}: ${s.unique} type${s.unique === 1 ? "" : "s"} of mistake, ${s.total} in total${rec.group ? ` across ${rec.files.length} files` : ""}`);
+  w.para(s.hasHeader ? (rec.group ? "Header block found in every file" : "Header block found") : `${headerMissingText(rec, s)}${s.deduct ? ": -1 point" : ""}`, s.hasHeader ? {} : minus);
+  if (s.syntax) w.para(syntaxText(s, "your file"), minus);
   if (s.run && !s.run.pending) {
+    if (rec.group) w.para(`Program run from ${rec.main.file}`, { color: PDF_C.muted });
     if (s.run.status === "ok") w.para("Program runs");
     else w.para(`Program ${STATUS[s.run.status].label.toLowerCase()}${s.runDeduct ? ": -1 point" : ""}`, s.runDeduct ? minus : {});
     if (settings.mode === "tests") w.para(`Tests passed: ${s.run.passed} of ${s.run.total}`);
@@ -2631,7 +2865,7 @@ async function buildPdf(rec, s) {
   if (s.run && !s.run.pending) {
     const block = (t) => {
       const st = STATUS[t.status];
-      if (t.status !== "ok") w.para(`${st.label}${t.error ? `: ${t.error}` : ""}${t.line ? ` (line ${t.line})` : ""}`, st.deduct ? minus : { color: PDF_C.muted });
+      if (t.status !== "ok") w.para(`${st.label}${t.error ? `: ${t.error}` : ""}${t.line ? ` (line ${t.line}${inFile(rec, t.file)})` : ""}`, st.deduct ? minus : { color: PDF_C.muted });
       for (const c of t.checks || []) {
         const lines = w.wrap(c.label, fonts.reg, 10, w.cw - 16);
         w.ensure(lines.length * 14 + (c.pass ? 0 : 13));
@@ -2664,24 +2898,33 @@ async function buildPdf(rec, s) {
   w.para(s.hasHeader ? "Shaded lines are your header, which isn't graded for style. Highlighted lines have a style mistake."
     : "Highlighted lines have a style mistake.", { size: 9, color: PDF_C.muted });
   w.gap(4);
-  const tags = new Map();
+  const tags = new Map(); // "fileIndex:line" -> codes
   for (const g of s.groups) for (const oc of g.occ) {
-    if (!tags.has(oc.line)) tags.set(oc.line, new Set());
-    tags.get(oc.line).add(g.code);
+    const k = `${oc.fi || 0}:${oc.line}`;
+    if (!tags.has(k)) tags.set(k, new Set());
+    tags.get(k).add(g.code);
   }
-  const src = rec.source.replace(/\r\n?/g, "\n").split("\n");
-  if (src.length && src[src.length - 1] === "") src.pop();
-  w.monoBlock(src.map((text, i) => {
-    const n = i + 1, hit = tags.get(n), hdr = s.hasHeader && n <= s.headerEnd;
-    return { text, num: n, tag: hit ? [...hit].join(" ") : "", bg: hit ? PDF_C.hit : hdr ? PDF_C.hdr : null, color: hdr && !hit ? PDF_C.muted : PDF_C.ink };
-  }), { numbers: true, tags: true, size: 8.5 });
+  filesOf(rec).forEach((f, fi) => {
+    const fr = f.raw || {};
+    if (rec.group) {
+      w.gap(fi ? 10 : 2);
+      w.ensure(40);
+      const note = [settings.mode !== "pep8" && f === rec.main ? "runs" : "", fr.has_header ? "" : "no header"].filter(Boolean).join(", ");
+      w.para(`${f.file}${note ? `  (${note})` : ""}`, { font: fonts.bold, size: 10.5 });
+      w.gap(2);
+    }
+    w.monoBlock(srcLines(f.source).map((text, i) => {
+      const n = i + 1, hit = tags.get(`${fi}:${n}`), hdr = fr.has_header && n <= fr.header_end;
+      return { text, num: n, tag: hit ? [...hit].join(" ") : "", bg: hit ? PDF_C.hit : hdr ? PDF_C.hdr : null, color: hdr && !hit ? PDF_C.muted : PDF_C.ink };
+    }), { numbers: true, tags: true, size: 8.5 });
+  });
 
   w.finish();
   return new Blob([await doc.save()], { type: "application/pdf" });
 }
 
 function pdfName(rec) {
-  return `${rec.student}-${rec.file.replace(/\.py$/i, "")}`.replace(/[^\w\- ]+/g, "").replace(/\s+/g, "-") + ".pdf";
+  return (rec.group ? `${rec.student}-${rec.files.length}-files` : `${rec.student}-${rec.file.replace(/\.py$/i, "")}`).replace(/[^\w\- ]+/g, "").replace(/\s+/g, "-") + ".pdf";
 }
 function saveBlob(blob, name) {
   const a = document.createElement("a");
@@ -2703,7 +2946,7 @@ async function downloadOnePdf(rec) {
 let pdfBusy = false;
 async function downloadAllPdfs() {
   if (pdfBusy) return;
-  const ready = results.filter(inPeriod).map((r) => ({ r, s: score(r) })).filter((x) => x.s);
+  const ready = entries().filter(inPeriod).map((r) => ({ r, s: score(r) })).filter((x) => x.s);
   if (!ready.length) return;
   if (ready.some((x) => x.s.run && x.s.run.pending) && !confirm("Some programs are still running. Make PDFs anyway? Unfinished results will be left out of those reports.")) return;
   pdfBusy = true;
@@ -2734,7 +2977,7 @@ async function downloadAllPdfs() {
 
 /* =====================  CLASS SUMMARY PDF (teacher)  ===================== */
 function summaryRows() {
-  const rows = results.filter(inPeriod).map((r) => ({ r, s: score(r) })).filter((x) => x.s)
+  const rows = entries().filter(inPeriod).map((r) => ({ r, s: score(r) })).filter((x) => x.s)
     .concat(missingPython().filter(inPeriod).map((m) => ({ r: m, s: null })));
   rows.sort((a, b) => {
     const va = sortValue(a.r, a.s), vb = sortValue(b.r, b.s);
@@ -2791,7 +3034,7 @@ async function buildSummaryPdf() {
     if (counts[i]) w.page.drawRectangle({ x: x0 + 14, y: yy - 1.5, width: Math.max(bw, 2), height: 9, color: w.rgb(col), opacity: 0.85 });
     w.text(String(counts[i]), x0 + 20 + Math.max(bw, 2), yy, fonts.reg, 9.5, C.ink);
   });
-  w.text(pdfClean(`${scored.length} file${scored.length === 1 ? "" : "s"} checked, average ${avg.toFixed(1)}`), x0, top - 112, fonts.reg, 9.5, C.muted);
+  w.text(pdfClean(`${scored.length} ${settings.groupFiles ? "student" : "file"}${scored.length === 1 ? "" : "s"} checked, average ${avg.toFixed(1)}`), x0, top - 112, fonts.reg, 9.5, C.muted);
 
   // 2) needs attention
   x0 = M + colW + 20;
@@ -2955,7 +3198,7 @@ async function buildSummaryPdf() {
 
 async function downloadSummaryPdf() {
   if (!results.length && !others.length) return;
-  if (results.some((r) => inPeriod(r) && (!r.raw || (score(r) && score(r).run && score(r).run.pending)))
+  if (entries().some((r) => inPeriod(r) && (!r.raw || (score(r) && score(r).run && score(r).run.pending)))
     && !confirm("Some files are still being checked. Make the summary anyway? Unfinished results will be left out.")) return;
   try {
     await loadPdfLib();
