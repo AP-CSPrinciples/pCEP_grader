@@ -374,6 +374,7 @@ details.test>summary{cursor:pointer;font-weight:600}
         <div class="row">
           <label class="cf"><span>Time limit (seconds)</span><input type="number" id="timeout" min="1" step="1"></label>
           <label class="check"><input type="checkbox" id="rubric"> <span><strong>Use the 3-column rubric</strong> (like the Java grader): Program &amp; Output, Style and Submission are each scored out of 5, so test results count</span></label>
+          <label class="check"><input type="checkbox" id="studentCases"> <span>Run each student's own <code>TEST CASE</code> comments, using their <code># Input:</code> lines (one answer per line). In "PEP 8 + runs" these replace your inputs when a student wrote any.</span></label>
           <label class="check" id="runDeductRow"><input type="checkbox" id="runDeduct"> <span>Take 1 point off when a program crashes, times out, or has a syntax error</span></label>
         </div>
         <div class="row presets">
@@ -821,7 +822,7 @@ def run_student(source, inputs_json, files_json='{}'):
         error = 'Printed too much output (possible endless loop)'
     except _NeedInput:
         status = 'needs_input'
-        error = 'Asked for more input than this test provides'
+        error = "Asked for more input than was typed in, so this run stopped early. This doesn't count against your score"
     except SystemExit:
         status = 'ok'
     except SyntaxError as exc:
@@ -955,7 +956,7 @@ const DEFAULTS = {
   t5: 0, t4: 2, t3: 4, t2: 6,
   weights: Object.fromEntries(CATEGORIES.map((c) => [c.id, 0.5])),
   headerDeduct: true, naming: true, minLines: 25, maxLen: 79,
-  tcCheck: true, tcDeduct: false, tcMin: 1, groupFiles: false,
+  tcCheck: true, tcDeduct: false, tcMin: 1, groupFiles: false, studentCases: true,
   mode: "pep8", runInputs: "", runAlts: [], timeout: 5, runDeduct: true, rubric: true, tests: [], reportTitle: ""
 };
 const STORE_KEY = "pep8-checker-settings-v1";
@@ -1437,7 +1438,7 @@ function outputScore(run, syntax) {
   for (const t of (run && run.tests) || []) {
     if (t.status === "pending") continue;
     const st = STATUS[t.status] || STATUS.crashed;
-    if (t.status === "unsupported" || t.status === "runner_error") {
+    if (t.status === "unsupported" || t.status === "runner_error" || t.status === "needs_input") {
       units.push({ label: `${t.name}: ${st.label}`, pass: null, key: t.status }); // can't judge here; teacher checks
       continue;
     }
@@ -1856,8 +1857,9 @@ function runSectionHtml(run, rec) {
     if (t.status === "syntax") return `<p class="muted">The program has a syntax error, so it couldn't run.</p>`;
     return `<pre class="out">${esc(t.output || "") || '<span class="muted">(no output)</span>'}</pre>`;
   };
-  let h = `<div class="runs"><h3>${settings.mode === "tests" ? "Tests" : "Running the program"}${rec.group ? ` (${esc(rec.main.file)})` : ""}</h3>`;
-  if (settings.mode === "runs") {
+  let h = `<div class="runs"><h3>${settings.mode === "tests" ? "Tests" : run.tests.some((t) => t.student) ? "Running your TEST CASEs" : "Running the program"}${rec.group ? ` (${esc(rec.main.file)})` : ""}</h3>`;
+  const ownTc = (t) => t.student ? `<p class="hint">Inputs from this TEST CASE: ${t.inputs.length ? esc(t.inputs.join(" / ")) : "none"}</p>${t.expected.length ? `<p class="hint">Student expected: ${esc(t.expected.join(" / "))}</p>` : ""}` : "";
+  if (settings.mode === "runs" && !run.tests.some((t) => t.student)) {
     const t = run.tests[0];
     h += `<p class="run-status">${statusLine(t)}</p>`;
     h += `<p class="hint">${t.alt ? `Ran with alternate inputs ${t.alt}` : "Inputs typed in"}: ${t.inputs.length ? esc(t.inputs.join(" / ")) : "none"}. Typed inputs are shown in the output the way a terminal displays them.</p>`;
@@ -1870,6 +1872,7 @@ function runSectionHtml(run, rec) {
         <summary><span class="${t.pass ? "hdr-ok" : t.status === "pending" ? "" : "hdr-miss"}">${icon}</span> ${esc(t.name)}</summary>
         <p class="run-status">${statusLine(t)}</p>
         ${t.alts && t.status !== "pending" && t.status !== "syntax" ? `<p class="hint">${t.alt ? `${t.pass ? "Passed using" : "Closest result came from"} alternate inputs ${t.alt}` : t.pass ? "Passed using the main inputs" : `Main inputs and ${t.alts} alternate set${t.alts === 1 ? "" : "s"} tried; showing the main inputs`}: ${esc(t.inputs.join(" / ") || "none")}</p>` : ""}
+        ${ownTc(t)}
         ${t.checks.length ? `<ul class="check-results">${t.checks.map((c) => `<li><span class="${c.pass ? "hdr-ok" : "hdr-miss"}">${c.pass ? "✓" : "✗"}</span> ${esc(c.label)}${c.pass ? "" : `<div class="muted">${esc(c.detail)}</div>`}</li>`).join("")}</ul>` : ""}
         ${outBlock(t)}
       </details>`;
@@ -1921,7 +1924,7 @@ function feedbackText(rec, s) {
   if (s.note) out.push(`Note from your teacher: ${s.note}`);
   out.push(`${s.unique} type${s.unique === 1 ? "" : "s"} of mistake, ${s.total} total. Each type counts once toward your score, no matter how many times it happens${rec.group ? " or in how many of your files" : ""}.`);
   if (!s.hasHeader) out.push(rec.group ? `No header block was found at the top of ${s.missingHeaders.join(", ")}. Every file needs one.` : "No header block was found at the top of your file.");
-  if (s.tc.on) out.push(`Test cases: ${testCaseText(s.tc)}.${s.tc.deduct ? ` At least ${s.tc.need} needed (label them TEST CASE 1: to TEST CASE ${TC_MAX}: in a comment at the end of your program).` : ""}`);
+  if (s.tc.on) out.push(`Test cases: ${testCaseText(s.tc)}.${s.tc.deduct ? ` At least ${s.tc.need} needed (label them TEST CASE 1: to TEST CASE ${TC_MAX}: in a comment at the end of your program, with one # Input: line for each answer).` : ""}`);
   if (s.syntax) out.push(`${syntaxText(s, "your file")}.`);
   if (s.run && !s.run.pending) {
     if (rec.group) out.push(`Your program was run from ${rec.main.file}.`);
@@ -2253,23 +2256,85 @@ function splitLines(s) {
   return a;
 }
 function inputsKey(inputs) { return JSON.stringify(inputs) + "|" + settings.timeout; }
+/* ---------- the student's own test cases ---------- */
+// At the bottom of the program, in comments:
+//   # TEST CASE 1:
+//   # Input: 17
+//   # Input: 5
+//   # Expected: Sum = 22
+// One "Input:" line per answer, in order. "Expected:" is optional and only shown for comparison.
+const TC_HEAD = /TEST\s*CASE\s*(?:#\s*)?(?::\s*(\d+)|(\d+)\s*:)(.*)$/i;
+const TC_INPUT = /^\s*Inputs?\s*:\s?(.*)$/i;
+const TC_EXPECT = /^\s*Expected(?:\s*output)?\s*:\s?(.*)$/i;
+function parseStudentCases(source) {
+  const cases = new Map();
+  let cur = null, inDoc = null;
+  for (const raw of String(source || "").replace(/\r\n?/g, "\n").split("\n")) {
+    let text = null;
+    const t = raw.trim();
+    if (inDoc) {
+      text = t.replace(inDoc, "");
+      if (t.includes(inDoc)) inDoc = null;
+    } else if (t.startsWith("#")) text = t.replace(/^#+/, "");
+    else {
+      const q = t.match(/^[rRuUbBfF]{0,2}("""|\'\'\')/);
+      if (q) {
+        text = t.slice(q[0].length);
+        if (!text.includes(q[1])) inDoc = q[1]; else text = text.replace(q[1], "");
+      } else { if (t) cur = null; continue; }   // real code ends a test case
+    }
+    const h = text.match(TC_HEAD);
+    if (h) {
+      const n = Number(h[1] || h[2]);
+      cur = n >= 1 && n <= TC_MAX && !cases.has(n) ? { n, inputs: [], expected: [] } : null;
+      if (cur) cases.set(n, cur);
+      text = h[3] || "";
+      if (!text.trim()) continue;
+    }
+    if (!cur) continue;
+    const i = text.match(TC_INPUT);
+    if (i) { cur.inputs.push(i[1].trim()); continue; }
+    const e = text.match(TC_EXPECT);
+    if (e && e[1].trim()) cur.expected.push(e[1].trim());
+  }
+  return [...cases.values()].sort((a, b) => a.n - b.n);
+}
+function studentTests(rec) {
+  if (!settings.studentCases) return [];
+  if (rec._tcSrc !== rec.source || rec._tcFiles !== (rec.group ? rec.files.length : 1)) {
+    const byNum = new Map();
+    for (const f of filesOf(rec)) for (const c of parseStudentCases(f.source)) if (!byNum.has(c.n)) byNum.set(c.n, c);
+    rec._tc = [...byNum.values()].sort((a, b) => a.n - b.n).filter((c) => c.inputs.length)
+      .map((c) => ({ name: `Your TEST CASE ${c.n}`, inputs: c.inputs.join("\n"), alts: [], checks: [], expected: c.expected, student: true }));
+    rec._tcSrc = rec.source; rec._tcFiles = rec.group ? rec.files.length : 1;
+  }
+  return rec._tc;
+}
+// What runs for this program: in "runs" mode the student's own test cases replace your inputs
+// when they wrote any; in "tests" mode they run after your tests.
+function testsFor(rec) {
+  const base = activeTests();
+  if (settings.mode === "pep8") return [];
+  const own = studentTests(rec);
+  if (settings.mode === "runs") return own.length ? own : base;
+  return [...base, ...own];
+}
 function activeTests() {
   if (settings.mode === "runs") return [{ name: "Run", inputs: settings.runInputs, alts: settings.runAlts || [], checks: [] }];
   if (settings.mode === "tests") return settings.tests;
   return [];
 }
 function inputSets(t) { return [splitLines(t.inputs), ...(t.alts || []).map(splitLines)]; }
-function neededInputs() { return activeTests().flatMap(inputSets); }
+function neededInputs(rec) { return testsFor(rec).flatMap(inputSets); }
 function setPasses(t, res) {
   return res && res !== "pending" && res.status === "ok" && (t.checks || []).every((c) => evalCheck(c, res.output || "").pass);
 }
 function scheduleRuns() {
   if (settings.mode === "pep8") return;
-  const tests = activeTests();
   for (const rec of entries()) {
     if (!rec.raw || runSyntax(rec)) continue;
     rec.runs = rec.runs || new Map();
-    for (const t of tests) {
+    for (const t of testsFor(rec)) {
       const sets = inputSets(t);
       // Alternates only run when the main inputs don't pass.
       for (let i = 0; i < sets.length; i++) {
@@ -2288,7 +2353,7 @@ async function processRuns() {
   let n = 0;
   while (runJobs.length) {
     const job = runJobs.shift();
-    const stillNeeded = entries().includes(job.rec) && neededInputs().some((inp) => runKey(job.rec, inp) === job.k);
+    const stillNeeded = entries().includes(job.rec) && neededInputs(job.rec).some((inp) => runKey(job.rec, inp) === job.k);
     if (!stillNeeded) { job.rec.runs && job.rec.runs.delete(job.k); continue; }
     $("progress").textContent = Runner.worker ? `Running programs: ${runJobs.length + 1} left…` : "Starting the program runner…";
     let res;
@@ -2405,11 +2470,11 @@ function worst(statuses) {
 }
 function computeRun(rec, style) {
   if (settings.mode === "pep8") return null;
-  const tests = activeTests();
+  const tests = testsFor(rec);
   if (style.syntax) {
     return {
       status: "syntax", error: `SyntaxError: ${style.syntax[1]}`, line: style.syntax[0], pending: false,
-      tests: tests.map((t) => ({ name: t.name, status: "syntax", checks: [], pass: false, output: "", inputs: splitLines(t.inputs), alt: 0, alts: (t.alts || []).length })),
+      tests: tests.map((t) => ({ student: !!t.student, expected: t.expected || [], name: t.name, status: "syntax", checks: [], pass: false, output: "", inputs: splitLines(t.inputs), alt: 0, alts: (t.alts || []).length })),
       passed: 0, total: tests.length
     };
   }
@@ -2423,14 +2488,14 @@ function computeRun(rec, style) {
       const res = rec.runs && rec.runs.get(runKey(rec, sets[i]));
       if (!res || res === "pending") { waiting = true; break; }
       const checks = (t.checks || []).map((c) => ({ label: checkLabel(c), ...evalCheck(c, res.output || "") }));
-      const entry = { name: t.name, status: res.status, error: res.error, line: res.line, file: res.file || null, output: res.output || "", inputs: sets[i],
+      const entry = { student: !!t.student, expected: t.expected || [], name: t.name, status: res.status, error: res.error, line: res.line, file: res.file || null, output: res.output || "", inputs: sets[i],
         checks, alt: i, alts: sets.length - 1, pass: res.status === "ok" && checks.every((c) => c.pass) };
       tried.push(entry);
       if (entry.pass) break;
     }
     const passed = tried.find((e) => e.pass);
     if (passed) { out.push(passed); continue; }
-    if (waiting) { pending = true; out.push({ name: t.name, status: "pending", checks: [], pass: false, output: "", inputs: sets[0], alt: 0, alts: sets.length - 1 }); continue; }
+    if (waiting) { pending = true; out.push({ student: !!t.student, expected: t.expected || [], name: t.name, status: "pending", checks: [], pass: false, output: "", inputs: sets[0], alt: 0, alts: sets.length - 1 }); continue; }
     // Nothing passed: show the attempt that got furthest (best status, then most checks), favoring the main inputs.
     tried.sort((a, b) => STATUS[a.status].rank - STATUS[b.status].rank
       || b.checks.filter((c) => c.pass).length - a.checks.filter((c) => c.pass).length || a.alt - b.alt);
@@ -2496,6 +2561,7 @@ function renderEditor() {
   $("testsBox").hidden = settings.mode !== "tests";
   $("timeout").value = settings.timeout;
   $("runDeduct").checked = settings.runDeduct;
+  $("studentCases").checked = settings.studentCases !== false;
   $("rubric").checked = settings.rubric;
   $("runDeductRow").hidden = settings.rubric;
   $("runInputs").value = settings.runInputs;
@@ -2532,6 +2598,7 @@ function bindEditor() {
     if (!isNaN(v) && v > 0) { settings.timeout = v; runSettingsChanged(false); }
   });
   $("runDeduct").addEventListener("change", () => { settings.runDeduct = $("runDeduct").checked; saveSettings(); render(); });
+  $("studentCases").addEventListener("change", () => { settings.studentCases = $("studentCases").checked; runSettingsChanged(false); });
   $("rubric").addEventListener("change", () => { settings.rubric = $("rubric").checked; $("runDeductRow").hidden = settings.rubric; saveSettings(); render(); });
   $("runInputs").addEventListener("input", () => { settings.runInputs = $("runInputs").value; runSettingsChanged(false); });
   $("runAlts").addEventListener("click", (e) => {
@@ -2943,15 +3010,19 @@ async function buildPdf(rec, s) {
         for (const ln of lines) { w.text(ln, M + 14, w.y - 10, fonts.reg, 10, PDF_C.ink); w.y -= 14; }
         if (!c.pass) w.para(c.detail, { indent: 14, size: 9, color: PDF_C.muted });
       }
+      if (t.student) {
+        w.para(`Inputs from your TEST CASE: ${t.inputs.length ? t.inputs.join(" / ") : "none"}`, { size: 9.5, color: PDF_C.muted });
+        if (t.expected.length) w.para(`You expected: ${t.expected.join(" / ")}`, { size: 9.5, color: PDF_C.muted });
+      }
       if (t.status !== "syntax") {
         w.gap(4);
         const outLines = (t.output || "(no output)").replace(/\n$/, "").split("\n");
         w.monoBlock([{ text: "", bg: PDF_C.paper }, ...outLines.map((x) => ({ text: x })), { text: "", bg: PDF_C.paper }], { bg: PDF_C.paper, size: 8 });
       }
     };
-    if (settings.mode === "runs") { w.heading("Running your program"); block(s.run.tests[0]); }
+    if (settings.mode === "runs" && !s.run.tests.some((t) => t.student)) { w.heading("Running your program"); block(s.run.tests[0]); }
     else {
-      w.heading("Tests");
+      w.heading(settings.mode === "tests" ? "Tests" : "Running your TEST CASEs");
       for (const t of s.run.tests) {
         w.ensure(40); w.gap(4);
         w.mark(t.pass, M, w.y - 11);
