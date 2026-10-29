@@ -356,6 +356,7 @@ details.test>summary{cursor:pointer;font-weight:600}
       </details>
       <div class="panel" style="padding:14px 18px;font-size:.875rem;color:var(--muted)">
         <strong style="color:var(--ink)">How the header works.</strong> Comments or a docstring at the very top of the file, before any code, count as the header. Its formatting is never graded. Files with fewer than two header comment lines (and no docstring) are flagged as missing a header.
+        <br><strong style="color:var(--ink)">TEST CASE lines.</strong> The <code># TEST CASE n:</code>, <code># Input:</code>, and <code># Expected:</code> comment lines are not checked for line length, so students can copy long output in full. All other style rules still apply.
       </div>
     </div>
   </section>
@@ -654,6 +655,35 @@ def find_test_cases(source):
     return sorted(nums)
 
 
+# Comment lines that make up a TEST CASE block at the end of the program:
+# the "TEST CASE n:" label and the "Input:" / "Expected:" lines under it.
+# These are grading notes, not code, so line length isn't checked on them.
+_TC_LABEL = re.compile(
+    r'TEST[ \t]*CASE[ \t]*(?:#[ \t]*)?(?::[ \t]*\d+|\d+[ \t]*:)', re.IGNORECASE)
+_TC_FIELD = re.compile(r'^(?:Inputs?|Expected(?:[ \t]*output)?)[ \t]*:',
+                       re.IGNORECASE)
+
+
+def find_test_case_lines(lines):
+    """Return the set of 1-based line numbers inside TEST CASE comments."""
+    found = set()
+    inside = False
+    for idx, line in enumerate(lines):
+        s = line.strip()
+        if not s:
+            continue
+        if not s.startswith('#'):
+            inside = False          # real code ends a test case
+            continue
+        text = s.lstrip('#').strip()
+        if _TC_LABEL.search(text):
+            inside = True
+            found.add(idx + 1)
+        elif inside and _TC_FIELD.match(text):
+            found.add(idx + 1)
+    return found
+
+
 _GUIDES = {}
 
 
@@ -691,6 +721,9 @@ def check(source, max_len=79, naming=True):
             items.append([exc.lineno or 1, (exc.offset or 0) + 1, 'E999',
                           'SyntaxError: %s' % exc.msg])
     exempt = hdr_end if has_hdr else 0
+    tc_lines = find_test_case_lines(lines)
+    items = [it for it in items
+             if not (it[2] == 'E501' and it[0] in tc_lines)]
     kept = sorted((it for it in items if it[0] > exempt),
                   key=lambda it: (it[0], it[1]))
     loc = 0
