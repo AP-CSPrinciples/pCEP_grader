@@ -168,6 +168,28 @@ tbody td:first-child{white-space:normal}
 .ln.filehead .tag{font-weight:400;color:var(--muted);margin-left:8px}
 .hdr-label{font-family:var(--sans);font-size:.75rem;color:var(--muted);padding:0 16px 6px 4.6em}
 
+.email-dialog{width:min(860px,calc(100vw - 24px));max-height:calc(100vh - 32px);padding:0;border:1px solid var(--line);border-radius:14px;background:var(--surface);color:var(--ink)}
+.email-dialog::backdrop{background:rgba(10,15,30,.45)}
+.em-wrap{display:flex;flex-direction:column;max-height:calc(100vh - 34px)}
+.em-head{display:flex;justify-content:space-between;align-items:center;padding:16px 20px;border-bottom:1px solid var(--line)}
+.em-head h2{margin:0;font-size:1.25rem}
+.em-body{padding:16px 20px;display:grid;gap:14px;overflow:auto}
+.em-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px 14px}
+.em-checks{display:flex;flex-wrap:wrap;gap:8px 20px}
+.em-test{font-weight:600}
+.em-table{max-height:44vh;overflow:auto;border:1px solid var(--line);border-radius:10px}
+.em-table table{font-size:.85rem}
+.em-table th{position:sticky;top:0;z-index:1}
+.em-table td{white-space:normal}
+.em-table tbody tr{cursor:default}
+.em-addr{font-family:var(--mono);font-size:.78rem;word-break:break-all}
+.em-ok{color:var(--good);font-weight:600}
+.em-bad{color:var(--pen);font-weight:600}
+.em-warn{color:var(--mid);font-weight:600}
+.em-note{margin:0;min-height:1.3em;font-size:.9rem}
+.em-foot{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:10px;padding:14px 20px;border-top:1px solid var(--line)}
+.btn.danger{background:var(--pen);border-color:var(--pen);color:#fff}
+.btn.danger:hover{background:var(--pen);opacity:.9}
 .toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--paper);padding:10px 16px;border-radius:8px;font-size:.9rem;opacity:0;pointer-events:none;transition:opacity .2s}
 .toast.show{opacity:1}
 footer{margin-top:40px;color:var(--muted);font-size:.8rem}
@@ -390,6 +412,7 @@ details.test>summary{cursor:pointer;font-weight:600}
         <button class="btn" id="pdfSummary" type="button" disabled>Class summary PDF</button>
         <button class="btn" id="pdfAll" type="button" disabled>Download student PDFs</button>
         <button class="btn" id="exportCsv" type="button" disabled>Export CSV</button>
+        <button class="btn" id="emailBtn" type="button" disabled title="Email each student their PDF report">Email students</button>
       </div>
     </div>
     <p class="progress" id="progress" aria-live="polite"></p>
@@ -409,6 +432,37 @@ details.test>summary{cursor:pointer;font-weight:600}
 
   <footer>Style checks by pycodestyle, the official PEP 8 checker, running in the browser with Pyodide. Naming checks follow the pep8-naming conventions. Programs run in a separate browser worker; <code>time.sleep()</code> and <code>os.system()</code> are skipped so pauses and screen clears don't cause timeouts.</footer>
 </div>
+<dialog id="emailDialog" class="email-dialog" aria-labelledby="emailTitle">
+  <div class="em-wrap">
+    <div class="em-head">
+      <h2 id="emailTitle">Email students</h2>
+      <button id="emailClose" class="btn quiet" type="button" aria-label="Close">✕</button>
+    </div>
+    <div class="em-body">
+      <div class="em-grid">
+        <label class="cf"><span>Mailer URL</span><input id="mailerUrl" type="text" placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off" spellcheck="false"></label>
+        <label class="cf"><span>Mailer key</span><input id="mailerKey" type="password" placeholder="Kept for this tab only" autocomplete="off"></label>
+      </div>
+      <div class="row"><button id="mailerPing" class="btn" type="button">Test connection</button><span id="mailerPingText" class="hint"></span></div>
+      <p class="hint" style="margin:0">Uses the same Google Apps Script mailer as the CSA Java Grader. Email addresses come from the class roster: load a Canvas gradebook export with <strong>Add class roster</strong> (it reads the Email or SIS Login ID column).</p>
+      <div class="em-checks">
+        <label class="check em-test"><input id="emailTest" type="checkbox" checked> Test run: send to me, not the students</label>
+        <label class="check"><input id="emailAttach" type="checkbox" checked> Attach the student's PDF report</label>
+      </div>
+      <div class="em-table">
+        <table>
+          <thead><tr><th><input id="emailAll" type="checkbox" aria-label="Select all"></th><th>Student</th><th>Email</th><th>Score</th><th>Status</th></tr></thead>
+          <tbody id="emailBody"></tbody>
+        </table>
+      </div>
+      <p id="emailNote" class="em-note" role="status"></p>
+    </div>
+    <div class="em-foot">
+      <span id="emailCount" class="hint"></span>
+      <span class="row"><button id="emailStop" class="btn" type="button" hidden>Stop</button><button id="emailSend" class="btn primary" type="button" disabled>Send</button></span>
+    </div>
+  </div>
+</dialog>
 <div class="toast" id="toast" role="status"></div>
 <script type="text/x-python" id="pysrc">
 import ast
@@ -1012,19 +1066,27 @@ function importRoster(text) {
   const lastCol = head.findIndex((h) => h === "last name" || h === "last");
   const firstCol = head.findIndex((h) => h === "first name" || h === "first");
   const sectionCol = head.findIndex((h) => h === "section" || h === "sections" || h === "period");
+  const emailCol = head.findIndex((h) => h === "email" || h === "email address" || h === "e-mail");
+  const loginCol = head.findIndex((h) => h === EMAIL.idColumn.toLowerCase());
   if (idCol < 0 || (studentCol < 0 && (lastCol < 0 || firstCol < 0))) return -1;
   let added = 0;
   for (const r of rows.slice(1)) {
     const id = (r[idCol] || "").trim();
     if (!/^\d+$/.test(id)) continue; // skips Canvas's "Points Possible" row
-    let name;
-    if (lastCol >= 0 && firstCol >= 0) name = rosterName(r[lastCol], r[firstCol]);
+    let name, first = "";
+    if (lastCol >= 0 && firstCol >= 0) { name = rosterName(r[lastCol], r[firstCol]); first = String(r[firstCol] || "").trim(); }
     else {
       const full = (r[studentCol] || "").trim();
       const comma = full.indexOf(",");
       name = comma > 0 ? rosterName(full.slice(0, comma), full.slice(comma + 1)) : full;
+      first = comma > 0 ? full.slice(comma + 1).trim() : full.split(/\s+/)[0] || "";
     }
-    if (name) { roster[id] = { name, period: sectionCol >= 0 ? periodFrom(r[sectionCol]) : "" }; added++; }
+    let email = emailCol >= 0 ? String(r[emailCol] || "").trim() : "";
+    if (!email && loginCol >= 0) {
+      const v = String(r[loginCol] || "").trim();
+      email = v.includes("@") ? v : v ? `${v}@${EMAIL.domain}` : "";
+    }
+    if (name) { roster[id] = { name, first: first.split(/\s+/)[0], email: email.toLowerCase(), period: sectionCol >= 0 ? periodFrom(r[sectionCol]) : "" }; added++; }
   }
   saveRoster();
   return added;
@@ -1538,6 +1600,7 @@ function render() {
     tbody.innerHTML = `<tr><td colspan="${COLUMNS.length}" class="empty">Add files above to see each student's style grade here.</td></tr>`;
     $("stats").textContent = others.length ? `No .py files found. Skipped ${others.length} other file${others.length === 1 ? "" : "s"}.` : "No files checked yet.";
     $("exportCsv").disabled = true;
+    $("emailBtn").disabled = true;
     $("pdfAll").disabled = true;
     $("pdfSummary").disabled = true;
     $("detail").hidden = true;
@@ -1623,9 +1686,11 @@ function render() {
     $("stats").textContent = `${results.length} file${results.length === 1 ? "" : "s"} waiting to be checked.`;
   }
   $("exportCsv").disabled = !scored.length && !missing.length;
+  $("emailBtn").disabled = !scored.length;
   $("pdfAll").disabled = !scored.length || pdfBusy;
   $("pdfSummary").disabled = !scored.length && !missing.length;
   if (selectedId != null) renderDetail(false);
+  if (typeof emailRefresh === "function") emailRefresh();
 }
 
 let lastDetailSig = "";
@@ -3211,11 +3276,235 @@ async function downloadSummaryPdf() {
     saveBlob(await buildSummaryPdf(), `${title}${periodSlug()}-class-summary.pdf`);
   } catch (e) { console.error(e); toast("Couldn't make the class summary. Check your internet connection and try again."); }
 }
+/* =====================  EMAIL STUDENTS  ===================== */
+// Sends each student their PDF report through YOUR Google Apps Script mailer
+// (the same Mailer.gs the CSA Java Grader uses; setup steps in EMAIL-SETUP.md).
+// Nothing private lives in this public page: the mailer URL is typed in once and
+// kept in this browser, the key is typed in each session, and student addresses
+// come from the roster you load.
+const EMAIL = {
+  domain: "lbschools.net",        // student addresses must end with this
+  idColumn: "SIS Login ID",        // roster column holding the part before the @
+  testLimit: 3,                    // a test run sends at most this many, all to you
+  // {first}, {name}, {assignment}, {score} are filled in for each student.
+  subject: "{assignment}: your PEP 8 report",
+  intro: "Hi {first},\n\n"
+    + "Your program for {assignment} has been checked: {score}. Your PEP 8 report is attached. "
+    + "Fix each mistake on the list before your next program.\n\n"
+    + "Your feedback:"
+};
+const MAILER_URL_KEY = "pep8-checker-mailer-url-v1";
+const MAILER_KEY_KEY = "pep8-checker-mailer-key";     // sessionStorage only
+const SENT_KEY = "pep8-checker-sent-v1";
+let emailSending = false;
+let emailStopAsked = false;
+
+function emailAssignment() { return (settings.reportTitle || "").trim(); }
+function emailSlug() { return "PEP 8: " + emailAssignment(); }
+function emailAllowed(addr) { return new RegExp(`^[^@\\s]+@${EMAIL.domain.replace(/\./g, "\\.")}$`, "i").test(addr || ""); }
+function letters(x) { return String(x || "").toLowerCase().normalize("NFD").replace(/[^a-z]/g, ""); }
+function sentLog() {
+  try { return (JSON.parse(localStorage.getItem(SENT_KEY) || "{}"))[emailSlug()] || {}; } catch (e) { return {}; }
+}
+function markSent(id, to, at) {
+  try {
+    const all = JSON.parse(localStorage.getItem(SENT_KEY) || "{}");
+    (all[emailSlug()] = all[emailSlug()] || {})[id] = { to, at: at || new Date().toISOString() };
+    localStorage.setItem(SENT_KEY, JSON.stringify(all));
+  } catch (e) { /* storage blocked */ }
+}
+function sGet(store, k) { try { return store.getItem(k) || ""; } catch (e) { return ""; } }
+function sSet(store, k, v) { try { store.setItem(k, v); } catch (e) { /* blocked */ } }
+
+function emailRows() {
+  const sent = sentLog();
+  const recs = entries().filter(inPeriod).slice().sort((a, b) => a.student.localeCompare(b.student));
+  const rows = recs.map((r) => {
+    const s = score(r);
+    const e = r.canvasId ? rosterEntry(r.canvasId) : null;
+    const d = { r, s, e, key: r.canvasId || "", sentAt: r.canvasId && sent[r.canvasId] ? sent[r.canvasId].at : null, problem: "", warn: "" };
+    if (!s) d.problem = "Not checked yet";
+    else if (s.run && s.run.pending) d.problem = "Still running";
+    else if (!r.canvasId) d.problem = "Not from a Canvas zip";
+    else if (!Object.keys(roster).length) d.problem = "Load a roster";
+    else if (!e) d.problem = "Not on roster";
+    else if (!e.email) d.problem = "No email on roster (reload it)";
+    else if (!emailAllowed(e.email)) d.problem = `Not an @${EMAIL.domain} address`;
+    else if (r.squashed && !((z, k) => z === k || k.startsWith(z) || z.startsWith(k))(letters(r.squashed), letters(e.name))) d.warn = "Roster name differs";
+    if (s) d.score = `${s.final}/5`;
+    return d;
+  });
+  for (const m of missingPython().filter(inPeriod)) {
+    rows.push({ r: m, s: null, e: rosterEntry(m.canvasId), key: m.canvasId, problem: "No Python file", warn: "" });
+  }
+  return rows;
+}
+
+function emailRender() {
+  const body = $("emailBody");
+  const rows = emailRows();
+  body.innerHTML = rows.map((d) => {
+    const can = !d.problem;
+    const checked = can && !d.warn && !d.sentAt;
+    const status = d.problem ? `<span class="em-bad">${esc(d.problem)}</span>`
+      : d.warn ? `<span class="em-warn" title="Check that this is the same student before sending">${esc(d.warn)}</span>`
+      : d.sentAt ? `<span class="muted">Sent ${esc(new Date(d.sentAt).toLocaleDateString())}</span>`
+      : `<span class="muted">Ready</span>`;
+    return `<tr data-key="${esc(d.key)}" data-rid="${d.r.id || ""}">
+      <td><input type="checkbox" ${can ? "" : "disabled"} ${checked ? "checked" : ""} aria-label="Send to ${esc(d.r.student)}"></td>
+      <td><span class="who">${esc(d.r.student)}</span>${d.r.period ? `<span class="file">${esc(d.r.period)}</span>` : ""}</td>
+      <td class="em-addr">${esc(d.e && d.e.email ? d.e.email : "—")}</td>
+      <td>${d.s ? mark(Math.max(1, Math.min(5, d.s.final))) : "—"}</td>
+      <td class="em-status">${status}</td></tr>`;
+  }).join("") || `<tr><td colspan="5" class="empty">No students to email.</td></tr>`;
+  $("emailAll").checked = false;
+  emailCount();
+}
+
+function emailSelected() {
+  return [...$("emailBody").querySelectorAll("tr")].filter((tr) => tr.querySelector("input:checked"));
+}
+function emailCount() {
+  const n = emailSelected().length;
+  const test = $("emailTest").checked;
+  const goes = test ? Math.min(n, EMAIL.testLimit) : n;
+  const title = emailAssignment();
+  $("emailCount").textContent = !title ? "Type the assignment name (next to the Class summary PDF button) before sending."
+    : test ? `${n} selected · test run sends the first ${goes} to you, not the students` : `${n} selected · sends to the students`;
+  const btn = $("emailSend");
+  btn.textContent = test ? `Send ${goes} test email${goes === 1 ? "" : "s"} to me` : `Send ${n} email${n === 1 ? "" : "s"} to students`;
+  btn.classList.toggle("danger", !test);
+  btn.classList.toggle("primary", test);
+  btn.disabled = emailSending || !n || !title;
+}
+function emailStatus(tr, html) { const c = tr.querySelector(".em-status"); if (c) c.innerHTML = html; }
+
+function fatalErr(msg) { const e = new Error(msg); e.fatal = true; return e; }
+async function mailerPost(payload) {
+  const url = $("mailerUrl").value.trim();
+  if (!/^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/.test(url)) throw fatalErr("The mailer URL should look like https://script.google.com/macros/s/…/exec");
+  let res;
+  try {
+    // A plain-text body keeps this a "simple" request, so Apps Script needs no CORS preflight.
+    res = await fetch(url, { method: "POST", body: JSON.stringify({ ...payload, key: $("mailerKey").value }) });
+  } catch (e) { throw fatalErr("Could not reach the mailer. Check the URL, and that the deployment allows “Anyone”."); }
+  let json;
+  try { json = await res.json(); } catch (e) { throw fatalErr("The mailer did not answer with JSON. Is the URL the /exec link of the deployment?"); }
+  if (!json.ok) { const err = new Error(json.error || "Mailer error"); err.fatal = !!json.fatal; throw err; }
+  return json;
+}
+
+async function blobBase64(blob) {
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  let bin = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  return btoa(bin);
+}
+
+async function emailMessage(r, s, e, test) {
+  const vars = { first: e.first || (e.name.split("_")[1] || "there"), name: e.name.replace(/^([^_]+)_(.+)$/, "$2 $1"), assignment: emailAssignment(), score: `${s.final}/5` };
+  const fill = (t) => t.replace(/\{(\w+)\}/g, (m, k) => (k in vars ? vars[k] : m));
+  const msg = {
+    action: "send", test, assignment: emailSlug(), canvasId: r.canvasId, student: vars.name, to: e.email,
+    subject: fill(EMAIL.subject), body: `${fill(EMAIL.intro)}\n\n${feedbackText(r, s)}`
+  };
+  if ($("emailAttach").checked) {
+    await loadPdfLib();
+    msg.pdfName = pdfName(r);
+    msg.pdfBase64 = await blobBase64(await buildPdf(r, s));
+  }
+  return msg;
+}
+
+async function emailSend() {
+  const test = $("emailTest").checked;
+  let trs = emailSelected();
+  if (!trs.length || !emailAssignment()) return;
+  if (!$("mailerUrl").value.trim() || !$("mailerKey").value) { $("emailNote").textContent = "Enter the mailer URL and key first."; return; }
+  if (test) trs = trs.slice(0, EMAIL.testLimit);
+  else if (!confirm(`Send ${trs.length} email${trs.length === 1 ? "" : "s"} for "${emailAssignment()}" to students now?`)) return;
+  const byKey = new Map(emailRows().filter((d) => d.key).map((d) => [d.key, d]));
+  emailSending = true; emailStopAsked = false;
+  $("emailStop").hidden = false; $("emailStop").disabled = false; $("emailClose").disabled = true;
+  emailCount();
+  let ok = 0, failed = 0, skipped = 0;
+  for (const tr of trs) {
+    if (emailStopAsked) break;
+    const d = byKey.get(tr.dataset.key);
+    if (!d || d.problem) continue;
+    emailStatus(tr, "Sending…");
+    try {
+      const res = await mailerPost(await emailMessage(d.r, d.s, d.e, test));
+      if (res.status === "duplicate") {
+        skipped++;
+        markSent(d.key, d.e.email, res.sentAt);
+        emailStatus(tr, `<span class="muted">Already sent ${esc(res.sentAt ? new Date(res.sentAt).toLocaleDateString() : "")} (skipped)</span>`);
+      } else if (res.status === "test") {
+        ok++;
+        emailStatus(tr, `<span class="em-ok">Test sent to ${esc(res.to || "you")}</span>`);
+      } else {
+        ok++;
+        markSent(d.key, d.e.email);
+        emailStatus(tr, `<span class="em-ok">Sent</span>`);
+        tr.querySelector("input").checked = false;
+      }
+    } catch (err) {
+      failed++;
+      emailStatus(tr, `<span class="em-bad">${esc(err.message)}</span>`);
+      if (err.fatal) break;   // wrong key or bad URL: don't keep trying
+    }
+  }
+  emailSending = false;
+  $("emailStop").hidden = true; $("emailClose").disabled = false;
+  emailCount();
+  $("emailNote").textContent = `${test ? "Test: " : ""}${ok} sent${skipped ? `, ${skipped} already sent before` : ""}${failed ? `, ${failed} failed` : ""}${emailStopAsked ? " (stopped)" : ""}.`
+    + (test && ok ? " Check your inbox, then uncheck “Test run” to send to students." : "");
+}
+
+function emailRefresh() {
+  const dlg = document.getElementById("emailDialog");
+  if (dlg && dlg.open && !emailSending && window.__emailReady) emailRender();
+}
+
+function bindEmail() {
+  const dlg = $("emailDialog");
+  $("mailerUrl").value = sGet(localStorage, MAILER_URL_KEY);
+  $("mailerKey").value = sGet(sessionStorage, MAILER_KEY_KEY);
+  $("mailerUrl").addEventListener("change", () => sSet(localStorage, MAILER_URL_KEY, $("mailerUrl").value.trim()));
+  $("mailerKey").addEventListener("change", () => sSet(sessionStorage, MAILER_KEY_KEY, $("mailerKey").value));
+  $("emailBtn").addEventListener("click", () => {
+    $("emailTest").checked = true;   // every time: a real send is a deliberate choice
+    $("emailNote").textContent = Object.values(roster).some((e) => e && e.email) ? ""
+      : "No email addresses yet. Load a Canvas gradebook export with Add class roster (Grades > Export > Export Entire Gradebook).";
+    emailRender();
+    dlg.showModal();
+  });
+  $("emailClose").addEventListener("click", () => { if (!emailSending) dlg.close(); });
+  dlg.addEventListener("cancel", (e) => { if (emailSending) e.preventDefault(); });
+  $("emailTest").addEventListener("change", emailCount);
+  $("emailBody").addEventListener("change", emailCount);
+  $("emailAll").addEventListener("change", () => {
+    for (const cb of $("emailBody").querySelectorAll("input[type=checkbox]:not(:disabled)")) cb.checked = $("emailAll").checked;
+    emailCount();
+  });
+  $("emailStop").addEventListener("click", () => { emailStopAsked = true; $("emailStop").disabled = true; });
+  $("emailSend").addEventListener("click", emailSend);
+  $("mailerPing").addEventListener("click", async () => {
+    $("mailerPingText").textContent = "Checking…";
+    try {
+      const res = await mailerPost({ action: "ping" });
+      $("mailerPingText").textContent = `Connected. Sends from ${res.from} · ${res.quota} emails left today`;
+    } catch (err) { $("mailerPingText").textContent = err.message; }
+  });
+  window.__emailReady = true;
+}
+
 fillSettings();
 renderEditor();
 bindSettings();
 bindEvents();
 bindEditor();
+bindEmail();
 render();
 if (typeof loadPyodide === "function") initPython();
 else {
