@@ -442,11 +442,12 @@ details.test>summary{cursor:pointer;font-weight:600}
     </div>
     <div class="em-body">
       <div class="em-grid">
-        <label class="cf"><span>Mailer URL</span><input id="mailerUrl" type="text" placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off" spellcheck="false"></label>
-        <label class="cf"><span>Mailer key</span><input id="mailerKey" type="password" placeholder="Kept for this tab only" autocomplete="off"></label>
+        <label class="cf"><span>Mailer URL</span><input id="mailerUrl" name="mailer-url" type="url" inputmode="url" placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off" spellcheck="false"></label>
+        <label class="cf"><span>Mailer key</span><input id="mailerKey" name="mailer-key" type="password" placeholder="Kept for this tab only" autocomplete="new-password"></label>
       </div>
       <div class="row"><button id="mailerPing" class="btn" type="button">Test connection</button><span id="mailerPingText" class="hint"></span></div>
-      <p class="hint" style="margin:0">Uses the same Google Apps Script mailer as the CSA Java Grader. Email addresses come from the class roster: load a Canvas gradebook export with <strong>Add class roster</strong> (it reads the Email or SIS Login ID column).</p>
+      <p class="hint" style="margin:0">One Google Apps Script mailer serves both AP CSP and AP CSA. Emails from this checker are tagged <strong id="emailCourse">[AP CSP]</strong> in the subject so students can tell the classes apart. Email addresses come from the class roster: load a Canvas gradebook export with <strong>Add class roster</strong> (it reads the Email or SIS Login ID column).</p>
+      <p class="hint" style="margin:0">Students who turned in no <code>.py</code> file get a short “please resubmit your .py file” email. Students on the roster with <strong>no submission</strong> are listed at the bottom, unchecked: tick the ones you want to remind.</p>
       <div class="em-checks">
         <label class="check em-test"><input id="emailTest" type="checkbox" checked> Test run: send to me, not the students</label>
         <label class="check"><input id="emailAttach" type="checkbox" checked> Attach the student's PDF report</label>
@@ -3387,15 +3388,30 @@ async function downloadSummaryPdf() {
 // kept in this browser, the key is typed in each session, and student addresses
 // come from the roster you load.
 const EMAIL = {
+  course: "AP CSP",               // shown as [AP CSP] in every subject line (the CSA Java Grader uses [AP CSA])
   domain: "lbschools.net",        // student addresses must end with this
   idColumn: "SIS Login ID",        // roster column holding the part before the @
   testLimit: 3,                    // a test run sends at most this many, all to you
-  // {first}, {name}, {assignment}, {score} are filled in for each student.
-  subject: "{assignment}: your PEP 8 report",
+  // {first}, {name}, {assignment}, {score}, {course}, {files} are filled in for each student.
+  subject: "[{course}] {assignment}: your PEP 8 report",
   intro: "Hi {first},\n\n"
     + "Your program for {assignment} has been checked: {score}. Your PEP 8 report is attached. "
     + "Fix each mistake on the list before your next program.\n\n"
-    + "Your feedback:"
+    + "Your feedback:",
+  // Turned in files, but no .py file (a screenshot, a .docx, ...). No PDF is attached.
+  noFile: {
+    subject: "[{course}] {assignment}: we didn’t get your .py file",
+    intro: "Hi {first},\n\n"
+      + "For {assignment}, Canvas received {files}, but this assignment needs your Python program as a .py file, "
+      + "so it couldn’t be checked. Please resubmit your .py file on Canvas."
+  },
+  // On the roster, nothing turned in. These rows start unchecked.
+  missing: {
+    subject: "[{course}] {assignment}: no submission received",
+    intro: "Hi {first},\n\n"
+      + "Canvas shows no submission from you for {assignment}. Please turn in your .py file as soon as you can. "
+      + "If you think this is a mistake, let me know."
+  }
 };
 const MAILER_URL_KEY = "pep8-checker-mailer-url-v1";
 const MAILER_KEY_KEY = "pep8-checker-mailer-key";     // sessionStorage only
@@ -3404,16 +3420,19 @@ let emailSending = false;
 let emailStopAsked = false;
 
 function emailAssignment() { return (settings.reportTitle || "").trim(); }
-function emailSlug() { return "PEP 8: " + emailAssignment(); }
+// The mailer refuses to send the same assignment slug to a student twice, so notices get their own
+// slug: a "no .py" reminder never blocks the real report once the student resubmits.
+const KIND_SUFFIX = { graded: "", nofile: " (no .py)", missing: " (no submission)" };
+function emailSlug(kind = "graded") { return "PEP 8: " + emailAssignment() + KIND_SUFFIX[kind]; }
 function emailAllowed(addr) { return new RegExp(`^[^@\\s]+@${EMAIL.domain.replace(/\./g, "\\.")}$`, "i").test(addr || ""); }
 function letters(x) { return String(x || "").toLowerCase().normalize("NFD").replace(/[^a-z]/g, ""); }
-function sentLog() {
-  try { return (JSON.parse(localStorage.getItem(SENT_KEY) || "{}"))[emailSlug()] || {}; } catch (e) { return {}; }
+function sentLog(kind) {
+  try { return (JSON.parse(localStorage.getItem(SENT_KEY) || "{}"))[emailSlug(kind)] || {}; } catch (e) { return {}; }
 }
-function markSent(id, to, at) {
+function markSent(id, to, at, kind) {
   try {
     const all = JSON.parse(localStorage.getItem(SENT_KEY) || "{}");
-    (all[emailSlug()] = all[emailSlug()] || {})[id] = { to, at: at || new Date().toISOString() };
+    (all[emailSlug(kind)] = all[emailSlug(kind)] || {})[id] = { to, at: at || new Date().toISOString() };
     localStorage.setItem(SENT_KEY, JSON.stringify(all));
   } catch (e) { /* storage blocked */ }
 }
@@ -3421,25 +3440,47 @@ function sGet(store, k) { try { return store.getItem(k) || ""; } catch (e) { ret
 function sSet(store, k, v) { try { store.setItem(k, v); } catch (e) { /* blocked */ } }
 
 function emailRows() {
-  const sent = sentLog();
+  const logs = { graded: sentLog("graded"), nofile: sentLog("nofile"), missing: sentLog("missing") };
+  const sentAt = (kind, id) => (id && logs[kind][id] ? logs[kind][id].at : null);
+  const hasRoster = Object.keys(roster).length > 0;
+  // Same checks for every kind of row; returns the reason it can't be sent, or "".
+  const addressProblem = (r, e) => !r.canvasId ? "Not from a Canvas zip"
+    : !hasRoster ? "Load a roster"
+    : !e ? "Not on roster"
+    : !e.email ? "No email on roster (reload it)"
+    : !emailAllowed(e.email) ? `Not an @${EMAIL.domain} address` : "";
+  const nameDiffers = (r, e) => r.squashed && e && !((z, k) => z === k || k.startsWith(z) || z.startsWith(k))(letters(r.squashed), letters(e.name));
+
   const recs = entries().filter(inPeriod).slice().sort((a, b) => a.student.localeCompare(b.student));
   const rows = recs.map((r) => {
     const s = score(r);
     const e = r.canvasId ? rosterEntry(r.canvasId) : null;
-    const d = { r, s, e, key: r.canvasId || "", sentAt: r.canvasId && sent[r.canvasId] ? sent[r.canvasId].at : null, problem: "", warn: "" };
+    const d = { kind: "graded", r, s, e, key: r.canvasId || "", sentAt: sentAt("graded", r.canvasId), problem: "", warn: "" };
     if (!s) d.problem = "Not checked yet";
     else if (s.run && s.run.pending) d.problem = "Still running";
-    else if (!r.canvasId) d.problem = "Not from a Canvas zip";
-    else if (!Object.keys(roster).length) d.problem = "Load a roster";
-    else if (!e) d.problem = "Not on roster";
-    else if (!e.email) d.problem = "No email on roster (reload it)";
-    else if (!emailAllowed(e.email)) d.problem = `Not an @${EMAIL.domain} address`;
-    else if (r.squashed && !((z, k) => z === k || k.startsWith(z) || z.startsWith(k))(letters(r.squashed), letters(e.name))) d.warn = "Roster name differs";
+    else d.problem = addressProblem(r, e);
+    if (!d.problem && nameDiffers(r, e)) d.warn = "Roster name differs";
     if (s) d.score = `${s.final}/5`;
     return d;
   });
+
+  // Turned in files, but no .py file
   for (const m of missingPython().filter(inPeriod)) {
-    rows.push({ r: m, s: null, e: rosterEntry(m.canvasId), key: m.canvasId, problem: "No Python file", warn: "" });
+    const e = rosterEntry(m.canvasId);
+    rows.push({ kind: "nofile", r: m, s: null, e, key: m.canvasId, sentAt: sentAt("nofile", m.canvasId), problem: addressProblem(m, e), warn: "" });
+  }
+
+  // On the roster, nothing in the zip. Only when this is a Canvas zip, so a few loose files don't list the whole class.
+  const turnedIn = new Set([...results, ...others].map((x) => x.canvasId).filter(Boolean));
+  if (turnedIn.size && hasRoster) {
+    const absent = Object.keys(roster).filter((id) => !turnedIn.has(id))
+      .map((id) => ({ id, e: rosterEntry(id) }))
+      .filter(({ e }) => e && inPeriod({ period: e.period || "" }))
+      .sort((a, b) => a.e.name.localeCompare(b.e.name));
+    for (const { id, e } of absent) {
+      const m = { missing: true, student: e.name, period: e.period || "", canvasId: id, files: [] };
+      rows.push({ kind: "missing", r: m, s: null, e, key: id, sentAt: sentAt("missing", id), problem: addressProblem(m, e), warn: "" });
+    }
   }
   return rows;
 }
@@ -3449,12 +3490,15 @@ function emailRender() {
   const rows = emailRows();
   body.innerHTML = rows.map((d) => {
     const can = !d.problem;
-    const checked = can && !d.warn && !d.sentAt;
-    const status = d.problem ? `<span class="em-bad">${esc(d.problem)}</span>`
+    // "No submission" reminders start unchecked: the roster can hold students who dropped or are excused.
+    const checked = can && !d.warn && !d.sentAt && d.kind !== "missing";
+    const label = d.kind === "nofile" ? "No .py file: resubmit email" : d.kind === "missing" ? "No submission: reminder email" : "";
+    const status = d.problem ? `<span class="em-bad">${esc(d.kind === "nofile" ? "No .py file · " : d.kind === "missing" ? "No submission · " : "")}${esc(d.problem)}</span>`
       : d.warn ? `<span class="em-warn" title="Check that this is the same student before sending">${esc(d.warn)}</span>`
-      : d.sentAt ? `<span class="muted">Sent ${esc(new Date(d.sentAt).toLocaleDateString())}</span>`
+      : d.sentAt ? `<span class="muted">${label ? esc(label.split(":")[0]) + " · " : ""}Sent ${esc(new Date(d.sentAt).toLocaleDateString())}</span>`
+      : label ? `<span class="em-warn">${esc(label)}</span>`
       : `<span class="muted">Ready</span>`;
-    return `<tr data-key="${esc(d.key)}" data-rid="${d.r.id || ""}">
+    return `<tr data-key="${esc(d.key)}" data-kind="${d.kind}" data-rid="${d.r.id || ""}">
       <td><input type="checkbox" ${can ? "" : "disabled"} ${checked ? "checked" : ""} aria-label="Send to ${esc(d.r.student)}"></td>
       <td><span class="who">${esc(d.r.student)}</span>${d.r.period ? `<span class="file">${esc(d.r.period)}</span>` : ""}</td>
       <td class="em-addr">${esc(d.e && d.e.email ? d.e.email : "—")}</td>
@@ -3505,13 +3549,26 @@ async function blobBase64(blob) {
   return btoa(bin);
 }
 
-async function emailMessage(r, s, e, test) {
-  const vars = { first: e.first || (e.name.split("_")[1] || "there"), name: e.name.replace(/^([^_]+)_(.+)$/, "$2 $1"), assignment: emailAssignment(), score: `${s.final}/5` };
-  const fill = (t) => t.replace(/\{(\w+)\}/g, (m, k) => (k in vars ? vars[k] : m));
-  const msg = {
-    action: "send", test, assignment: emailSlug(), canvasId: r.canvasId, student: vars.name, to: e.email,
-    subject: fill(EMAIL.subject), body: `${fill(EMAIL.intro)}\n\n${feedbackText(r, s)}`
+async function emailMessage(d, test) {
+  const { r, s, e, kind } = d;
+  const vars = {
+    first: e.first || (e.name.split("_")[1] || "there"),
+    name: e.name.replace(/^([^_]+)_(.+)$/, "$2 $1"),
+    assignment: emailAssignment(),
+    course: EMAIL.course,
+    score: s ? `${s.final}/5` : "",
+    files: kind === "nofile" ? (r.files.map((f) => f.file).join(", ") || "other files") : ""
   };
+  const fill = (t) => t.replace(/\{(\w+)\}/g, (m, k) => (k in vars ? vars[k] : m));
+  const msg = { action: "send", test, course: EMAIL.course, assignment: emailSlug(kind), canvasId: r.canvasId, student: vars.name, to: e.email };
+  if (kind !== "graded") {
+    const t = kind === "nofile" ? EMAIL.noFile : EMAIL.missing;
+    msg.subject = fill(t.subject);
+    msg.body = fill(t.intro);
+    return msg;    // nothing to attach
+  }
+  msg.subject = fill(EMAIL.subject);
+  msg.body = `${fill(EMAIL.intro)}\n\n${feedbackText(r, s)}`;
   if ($("emailAttach").checked) {
     await loadPdfLib();
     msg.pdfName = pdfName(r);
@@ -3527,28 +3584,28 @@ async function emailSend() {
   if (!$("mailerUrl").value.trim() || !$("mailerKey").value) { $("emailNote").textContent = "Enter the mailer URL and key first."; return; }
   if (test) trs = trs.slice(0, EMAIL.testLimit);
   else if (!confirm(`Send ${trs.length} email${trs.length === 1 ? "" : "s"} for "${emailAssignment()}" to students now?`)) return;
-  const byKey = new Map(emailRows().filter((d) => d.key).map((d) => [d.key, d]));
+  const byKey = new Map(emailRows().filter((d) => d.key).map((d) => [d.kind + ":" + d.key, d]));
   emailSending = true; emailStopAsked = false;
   $("emailStop").hidden = false; $("emailStop").disabled = false; $("emailClose").disabled = true;
   emailCount();
   let ok = 0, failed = 0, skipped = 0;
   for (const tr of trs) {
     if (emailStopAsked) break;
-    const d = byKey.get(tr.dataset.key);
+    const d = byKey.get(tr.dataset.kind + ":" + tr.dataset.key);
     if (!d || d.problem) continue;
     emailStatus(tr, "Sending…");
     try {
-      const res = await mailerPost(await emailMessage(d.r, d.s, d.e, test));
+      const res = await mailerPost(await emailMessage(d, test));
       if (res.status === "duplicate") {
         skipped++;
-        markSent(d.key, d.e.email, res.sentAt);
+        markSent(d.key, d.e.email, res.sentAt, d.kind);
         emailStatus(tr, `<span class="muted">Already sent ${esc(res.sentAt ? new Date(res.sentAt).toLocaleDateString() : "")} (skipped)</span>`);
       } else if (res.status === "test") {
         ok++;
         emailStatus(tr, `<span class="em-ok">Test sent to ${esc(res.to || "you")}</span>`);
       } else {
         ok++;
-        markSent(d.key, d.e.email);
+        markSent(d.key, d.e.email, null, d.kind);
         emailStatus(tr, `<span class="em-ok">Sent</span>`);
         tr.querySelector("input").checked = false;
       }
@@ -3572,11 +3629,15 @@ function emailRefresh() {
 
 function bindEmail() {
   const dlg = $("emailDialog");
-  $("mailerUrl").value = sGet(localStorage, MAILER_URL_KEY);
+  $("emailCourse").textContent = `[${EMAIL.course}]`;
+  // A browser can autofill a saved login into these two boxes; an email address is never a mailer URL.
+  const savedUrl = sGet(localStorage, MAILER_URL_KEY);
+  $("mailerUrl").value = /^https:\/\//.test(savedUrl) ? savedUrl : "";
   $("mailerKey").value = sGet(sessionStorage, MAILER_KEY_KEY);
   $("mailerUrl").addEventListener("change", () => sSet(localStorage, MAILER_URL_KEY, $("mailerUrl").value.trim()));
   $("mailerKey").addEventListener("change", () => sSet(sessionStorage, MAILER_KEY_KEY, $("mailerKey").value));
   $("emailBtn").addEventListener("click", () => {
+    if ($("mailerUrl").value && !/^https:\/\//.test($("mailerUrl").value.trim())) $("mailerUrl").value = "";
     $("emailTest").checked = true;   // every time: a real send is a deliberate choice
     $("emailNote").textContent = Object.values(roster).some((e) => e && e.email) ? ""
       : "No email addresses yet. Load a Canvas gradebook export with Add class roster (Grades > Export > Export Entire Gradebook).";
