@@ -177,7 +177,7 @@ tbody td:first-child{white-space:normal}
 .em-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px 14px}
 .em-checks{display:flex;flex-wrap:wrap;gap:8px 20px}
 .em-test{font-weight:600}
-.em-table{max-height:44vh;overflow:auto;border:1px solid var(--line);border-radius:10px}
+.em-table{max-height:44vh;min-height:min(220px,40vh);overflow:auto;border:1px solid var(--line);border-radius:10px}
 .em-table table{font-size:.85rem}
 .em-table th{position:sticky;top:0;z-index:1}
 .em-table td{white-space:normal}
@@ -3418,6 +3418,8 @@ const MAILER_KEY_KEY = "pep8-checker-mailer-key";     // sessionStorage only
 const SENT_KEY = "pep8-checker-sent-v1";
 let emailSending = false;
 let emailStopAsked = false;
+let emailAbort = null;                 // aborts the request in flight when Stop is clicked
+const MAILER_TIMEOUT_MS = 90000;       // a send that takes longer than this is reported, not left hanging
 
 function emailAssignment() { return (settings.reportTitle || "").trim(); }
 // The mailer refuses to send the same assignment slug to a student twice, so notices get their own
@@ -3528,14 +3530,22 @@ function emailCount() {
 function emailStatus(tr, html) { const c = tr.querySelector(".em-status"); if (c) c.innerHTML = html; }
 
 function fatalErr(msg) { const e = new Error(msg); e.fatal = true; return e; }
-async function mailerPost(payload) {
+async function mailerPost(payload, signal) {
   const url = $("mailerUrl").value.trim();
   if (!/^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/.test(url)) throw fatalErr("The mailer URL should look like https://script.google.com/macros/s/…/exec");
   let res;
   try {
     // A plain-text body keeps this a "simple" request, so Apps Script needs no CORS preflight.
-    res = await fetch(url, { method: "POST", body: JSON.stringify({ ...payload, key: $("mailerKey").value }) });
-  } catch (e) { throw fatalErr("Could not reach the mailer. Check the URL, and that the deployment allows “Anyone”."); }
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort("timeout"), MAILER_TIMEOUT_MS);
+    if (signal) signal.addEventListener("abort", () => ctl.abort("stop"), { once: true });
+    try { res = await fetch(url, { method: "POST", body: JSON.stringify({ ...payload, key: $("mailerKey").value }), signal: ctl.signal }); }
+    finally { clearTimeout(timer); }
+  } catch (e) {
+    if (signal && signal.aborted) throw fatalErr("Stopped before the mailer answered. Check your inbox and the Sent log before resending.");
+    if (e && (e.name === "AbortError" || e === "timeout")) throw fatalErr(`The mailer didn’t answer within ${MAILER_TIMEOUT_MS / 1000} seconds. Check your inbox and the Sheet’s Sent log, then try again.`);
+    throw fatalErr("Could not reach the mailer. Check the URL, and that the deployment allows “Anyone”.");
+  }
   let json;
   try { json = await res.json(); } catch (e) { throw fatalErr("The mailer did not answer with JSON. Is the URL the /exec link of the deployment?"); }
   if (!json.ok) { const err = new Error(json.error || "Mailer error"); err.fatal = !!json.fatal; throw err; }
@@ -3589,13 +3599,21 @@ async function emailSend() {
   $("emailStop").hidden = false; $("emailStop").disabled = false; $("emailClose").disabled = true;
   emailCount();
   let ok = 0, failed = 0, skipped = 0;
-  for (const tr of trs) {
+  emailAbort = new AbortController();
+  const progress = (i, what) => { $("emailCount").textContent = `${test ? "Test run · " : ""}${i + 1} of ${trs.length}: ${what}`; };
+  for (const [i, tr] of trs.entries()) {
     if (emailStopAsked) break;
     const d = byKey.get(tr.dataset.kind + ":" + tr.dataset.key);
     if (!d || d.problem) continue;
-    emailStatus(tr, "Sending…");
+    tr.scrollIntoView({ block: "nearest" });
+    const who = d.e && d.e.name ? d.e.name.replace(/^([^_]+)_(.+)$/, "$2 $1") : d.r.student;
     try {
-      const res = await mailerPost(await emailMessage(d, test));
+      emailStatus(tr, d.kind === "graded" && $("emailAttach").checked ? "Making PDF…" : "Preparing…");
+      progress(i, d.kind === "graded" && $("emailAttach").checked ? `making ${who}’s PDF…` : `preparing ${who}’s email…`);
+      const msg = await emailMessage(d, test);
+      emailStatus(tr, "Sending…");
+      progress(i, `sending ${who}’s email…`);
+      const res = await mailerPost(msg, emailAbort.signal);
       if (res.status === "duplicate") {
         skipped++;
         markSent(d.key, d.e.email, res.sentAt, d.kind);
@@ -3616,6 +3634,7 @@ async function emailSend() {
     }
   }
   emailSending = false;
+  emailAbort = null;
   $("emailStop").hidden = true; $("emailClose").disabled = false;
   emailCount();
   $("emailNote").textContent = `${test ? "Test: " : ""}${ok} sent${skipped ? `, ${skipped} already sent before` : ""}${failed ? `, ${failed} failed` : ""}${emailStopAsked ? " (stopped)" : ""}.`
@@ -3652,7 +3671,7 @@ function bindEmail() {
     for (const cb of $("emailBody").querySelectorAll("input[type=checkbox]:not(:disabled)")) cb.checked = $("emailAll").checked;
     emailCount();
   });
-  $("emailStop").addEventListener("click", () => { emailStopAsked = true; $("emailStop").disabled = true; });
+  $("emailStop").addEventListener("click", () => { emailStopAsked = true; $("emailStop").disabled = true; if (emailAbort) emailAbort.abort(); });
   $("emailSend").addEventListener("click", emailSend);
   $("mailerPing").addEventListener("click", async () => {
     $("mailerPingText").textContent = "Checking…";
